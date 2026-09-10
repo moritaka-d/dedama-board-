@@ -91,14 +91,46 @@
   .kpi div b { display: block; font-family: var(--num); font-size: 30px; font-weight: 700; line-height: 1.1; }
   .kpi div { color: var(--ink-2); font-size: 12px; }
 
+  #gate { position: fixed; inset: 0; background: var(--paper); z-index: 10; display: flex; align-items: center; justify-content: center; }
+  #gate > div { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 28px 32px; width: 300px; display: flex; flex-direction: column; gap: 12px; }
+  #gate h1 { font-family: var(--num); font-size: 30px; margin: 0 0 6px; }
+  #gate label { display: flex; flex-direction: column; gap: 4px; color: var(--ink-2); font-size: 13px; }
+  #gate input { font: inherit; padding: 7px 10px; border: 1.5px solid var(--line); border-radius: 4px; }
+  #gate button { background: var(--ink); color: #fff; border: 0; border-radius: 4px; padding: 9px; cursor: pointer; margin-top: 4px; }
+  #gate p { margin: 0; color: var(--plus); font-size: 13px; min-height: 1.4em; }
+  html.locked body > :not(#gate) { visibility: hidden; }
   .empty { padding: 60px 20px; text-align: center; color: var(--ink-2); }
   .empty code { background: var(--panel); padding: 2px 6px; border-radius: 3px; }
   @media (prefers-reduced-motion: reduce) { .cell { transition: none; } .cell:hover { transform: none; } }
 </style>
 </head>
 <body>
+<div id="gate">
+  <div>
+    <h1>みのる金色になれ</h1>
+    <label>ID <input id="gid" autocomplete="username" autofocus></label>
+    <label>パスワード <input id="gpw" type="password" autocomplete="current-password"></label>
+    <button id="gbtn">開く</button>
+    <p id="gmsg"></p>
+  </div>
+</div>
+<script>
+(function () {
+  const ID = "sin", PW = "1";
+  const gate = document.getElementById("gate");
+  if (sessionStorage.getItem("dedama_ok") === "1") { gate.remove(); return; }
+  document.documentElement.classList.add("locked");
+  function tryLogin() {
+    if (document.getElementById("gid").value === ID && document.getElementById("gpw").value === PW) {
+      sessionStorage.setItem("dedama_ok", "1"); gate.remove(); document.documentElement.classList.remove("locked");
+    } else { document.getElementById("gmsg").textContent = "IDかパスワードが違います"; document.getElementById("gpw").value = ""; }
+  }
+  document.getElementById("gbtn").onclick = tryLogin;
+  gate.addEventListener("keydown", e => { if (e.key === "Enter") tryLogin(); });
+})();
+</script>
 <header>
-  <h1>出玉ボード <small>吉兆 台別成績（dedama.me より毎日取得）</small></h1>
+  <h1>出玉ボード <small>吉兆 台別成績（dedama.me）</small></h1>
   <div class="updated" id="updated"></div>
 </header>
 
@@ -298,7 +330,8 @@
     if (chg.length) ch.innerHTML += `入替 ${chg.length}台: ` + chg.map(r => `<span><em>${r.dai}</em> ${r.changed} → ${r.model}</span>`).join("");
     if (removed.length) ch.innerHTML += `<br>この日から消えた台 ${removed.length}台: ` + removed.map(r => `<span><em>${r.dai}</em> ${r.model}</span>`).join("");
     const plus = rows.filter(r => r.box > 0).length;
-    $("#boardNote").textContent = `${fmtDay(state.day)}　${rows.length}台　プラス ${plus}台（${rows.length ? Math.round(plus / rows.length * 100) : 0}%）`;
+    const total = rows.reduce((a, r) => a + (r.box || 0), 0);
+    $("#boardNote").innerHTML = `${fmtDay(state.day)}　${rows.length}台　プラス ${plus}台（${rows.length ? Math.round(plus / rows.length * 100) : 0}%）　合計 <b style="color:${total >= 0 ? "var(--plus)" : "var(--minus)"};font-family:var(--num);font-size:16px">${total >= 0 ? "+" : ""}${total.toFixed(1)}</b> 箱`;
   }
 
   function renderTable() {
