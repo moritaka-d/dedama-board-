@@ -436,7 +436,7 @@
     for (const r of rows) { if (r.box == null) continue; if (!byDay.has(r.day)) byDay.set(r.day, []); byDay.get(r.day).push(r.box); }
     const ds = [...byDay].sort();
     $("#dailyTitle").innerHTML = state.model
-      ? `${state.model} の推移 <span>この機種だった台の1日あたりの平均箱数と、プラスで終わった台の割合（台移動しても機種名で集計）</span>`
+      ? `${state.model} の推移 <span>1日あたりの平均箱数と、プラスで終わった台の割合（台移動しても機種名で集計）</span>`
       : `店全体の推移 <span>1日あたりの平均箱数と、プラスで終わった台の割合</span>`;
     const counts = ds.map(([, v]) => v.length);
     const data = {
