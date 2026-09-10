@@ -2,7 +2,7 @@ name: fetch dedama
 
 on:
   schedule:
-    - cron: "30 15 * * *"   # 毎日 00:30 JST（閉店後）
+    - cron: "5 14 * * *"     # 毎日 23:05 JST（cron は UTC 表記）
   workflow_dispatch:         # 手動実行も可
 
 permissions:
