@@ -182,7 +182,7 @@
 
   <section id="dailySec" hidden>
     <div class="panel">
-      <h2>店全体の推移 <span>1日あたりの平均箱数と、プラスで終わった台の割合</span></h2>
+      <h2 id="dailyTitle">店全体の推移 <span>1日あたりの平均箱数と、プラスで終わった台の割合</span></h2>
       <div class="chartbox"><canvas id="daily"></canvas></div>
     </div>
   </section>
@@ -435,6 +435,10 @@
     const byDay = new Map();
     for (const r of rows) { if (r.box == null) continue; if (!byDay.has(r.day)) byDay.set(r.day, []); byDay.get(r.day).push(r.box); }
     const ds = [...byDay].sort();
+    $("#dailyTitle").innerHTML = state.model
+      ? `${state.model} の推移 <span>この機種だった台の1日あたりの平均箱数と、プラスで終わった台の割合（台移動しても機種名で集計）</span>`
+      : `店全体の推移 <span>1日あたりの平均箱数と、プラスで終わった台の割合</span>`;
+    const counts = ds.map(([, v]) => v.length);
     const data = {
       labels: ds.map(([d]) => d.slice(5).replace("-", "/")),
       datasets: [
@@ -445,7 +449,8 @@
     const opts = structuredClone(baseOpts);
     opts.scales.y = { position: "left", title: { display: true, text: "箱" }, grid: { color: "#E6E8EC" } };
     opts.scales.y2 = { position: "right", min: 0, max: 100, title: { display: true, text: "%" }, grid: { display: false } };
-    if (dailyChart) { dailyChart.data = data; dailyChart.update(); }
+    opts.plugins.tooltip = { callbacks: { afterBody: items => `台数 ${counts[items[0].dataIndex]}台` } };
+    if (dailyChart) { dailyChart.data = data; dailyChart.options = opts; dailyChart.update(); }
     else dailyChart = new Chart($("#daily"), { data, options: opts });
   }
 
