@@ -40,6 +40,9 @@
   .seg button { border: 0; background: transparent; padding: 5px 14px; cursor: pointer; }
   .seg button + button { border-left: 1.5px solid var(--ink); }
   .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+  .seg .ext { display: inline-flex; align-items: center; padding: 0 8px; border-left: 1.5px solid var(--ink); color: var(--ink-2); text-decoration: none; }
+  .seg .ext:hover { color: var(--ink); background: #F5F6F8; }
+  .seg .ext + button { border-left: 1.5px solid var(--ink); }
   .controls label { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); }
   select { background: var(--panel); border: 1.5px solid var(--line); border-radius: 4px; padding: 5px 8px; }
   select:focus, button:focus-visible { outline: 2px solid var(--minus); outline-offset: 2px; }
@@ -132,7 +135,7 @@
 })();
 </script>
 <header>
-  <h1>出玉ボード <small>台別成績（dedama.me より毎日23時取得）</small></h1>
+  <h1>出玉ボード <small>台別成績（dedama.me より毎日24時取得）</small></h1>
   <div class="updated" id="updated"></div>
 </header>
 
@@ -191,6 +194,9 @@
 <script>
 (async function () {
   const $ = s => document.querySelector(s);
+    // 店舗名 → dedama.me のページ（店舗を増やしたらここにも足す）
+  const STORE_URLS = { "東名": "http://dedama.me/kc_toumei/", "野川": "http://dedama.me/kc_nogawa/" };
+  const LINK_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
   const state = { store: null, kind: "パチンコ", metric: "box", day: null, model: "", dai: null, sortKey: "avgBox", sortDir: -1 };
 
   // ---------- CSV ----------
@@ -315,7 +321,8 @@
     daySel.value = state.day;
     const stores = [...new Set(all.map(r => r.store))];
     if (!stores.includes(state.store)) state.store = stores[0];
-    $("#storeSeg").innerHTML = stores.map(st => `<button aria-pressed="${st === state.store}" data-v="${st}">${st}</button>`).join("");
+    $("#storeSeg").innerHTML = stores.map(st => `<button aria-pressed="${st === state.store}" data-v="${st}">${st}</button>` +
+    (STORE_URLS[st] ? `<a class="ext" href="${STORE_URLS[st]}" target="_blank" rel="noopener" title="${st}のサイトを開く">${LINK_ICON}</a>` : "")).join("");
     seg("#storeSeg", "store");
     fillModels();
     const more = loadedMonths < months.length;
