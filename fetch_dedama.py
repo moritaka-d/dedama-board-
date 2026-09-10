@@ -86,11 +86,19 @@ def main():
     with daily.open("w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fields); w.writeheader(); w.writerows(rows)
     allf = OUT / "all.csv"
-    new = not allf.exists()
-    with allf.open("a", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fields)
-        if new: w.writeheader()
-        w.writerows(rows)
+    old_rows = []
+    if allf.exists():
+        with allf.open(newline="", encoding="utf-8-sig") as f:
+            old_rows = list(csv.DictReader(f))
+    # 列が増えた（店舗追加など）場合は、古い行にも列を足して書き直す。店舗なしの古いデータは最初の店舗扱い
+    first_store = next(iter(STORES.values()))
+    for r in old_rows:
+        for k in fields:
+            r.setdefault(k, "")
+        r["store"] = r["store"] or first_store
+    with allf.open("w", newline="", encoding="utf-8-sig") as f:
+        w = csv.DictWriter(f, fields, extrasaction="ignore"); w.writeheader()
+        w.writerows(old_rows); w.writerows(rows)
     print(f"{len(rows)} 台分を {daily} に保存")
 
 if __name__ == "__main__":
