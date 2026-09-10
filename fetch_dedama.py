@@ -7,13 +7,26 @@ import csv, html, re, sys, time, urllib.request
 from datetime import date
 from pathlib import Path
 
-BASE = "http://dedama.me/kc_toumei/"
+# 取得する店舗（URLのフォルダ名: 表示名）。増やしたいときはここに足す
+STORES = {
+    "kc_toumei": "東名",
+    "kc_nogawa": "野川",
+}
 UA = {"User-Agent": "Mozilla/5.0"}
 OUT = Path(sys.argv[1] if len(sys.argv) > 1 else "data")
 
-def get(url):
-    req = urllib.request.Request(url, headers=UA)
-    return urllib.request.urlopen(req, timeout=30).read().decode("cp932", errors="replace")
+def get(url, retries=5):
+    """503 などで失敗したら待ってやり直す（最大 retries 回、待ち時間は 30s → 60s → 120s …）"""
+    for i in range(retries):
+        try:
+            req = urllib.request.Request(url, headers=UA)
+            return urllib.request.urlopen(req, timeout=30).read().decode("cp932", errors="replace")
+        except Exception as e:
+            if i == retries - 1:
+                raise
+            wait = 30 * 2 ** i
+            print(f"  取得失敗 ({e}) {wait}秒待って再試行", flush=True)
+            time.sleep(wait)
 
 def strip(s):
     return html.unescape(re.sub(r"<[^>]+>", "", s)).replace("\xa0", " ").strip()
@@ -27,8 +40,8 @@ def site_today(dom):
             return d.isoformat()
     return ""
 
-def main():
-    OUT.mkdir(parents=True, exist_ok=True)
+def fetch_store(code, store_name):
+    BASE = f"http://dedama.me/{code}/"
     top = get(BASE)
     sid = re.search(r"s=([0-9a-f]+)", top).group(1)   # セッションIDは毎回変わる
     rows = []
@@ -46,13 +59,26 @@ def main():
                 c = [strip(x) for x in re.findall(r"<t[dh].*?</t[dh]>", tr, re.S)]
                 if len(c) == 10 and re.fullmatch(r"\d+", c[0]):
                     rows.append({
-                        "fetch_date": date.today().isoformat(), "today_date": today_date, "site_updated": updated,
+                        "store": store_name, "fetch_date": date.today().isoformat(), "today_date": today_date, "site_updated": updated,
                         "kind": kind, "model_id": mid, "model": strip(name), "dai": c[0],
                         "box_d2": c[1], "box_d1": c[2], "box_d0": c[3],
                         "hit_d2": c[4], "hit_d1": c[5], "hit_d0": c[6],
                         "prob_d2": c[7], "prob_d1": c[8], "prob_d0": c[9],
                     })
-            time.sleep(0.3)  # サーバーへの負荷配慮
+            time.sleep(1.0)  # 1秒に1ページまで（サーバーへの負荷配慮）
+        print(f"  {store_name} {kind}: {len(models)} 機種", flush=True)
+    return rows
+
+def main():
+    OUT.mkdir(parents=True, exist_ok=True)
+    rows = []
+    for code, name in STORES.items():
+        try:
+            got = fetch_store(code, name)
+            print(f"{name}: {len(got)} 台", flush=True)
+            rows += got
+        except Exception as e:
+            print(f"{name}: 取得失敗 {e}")
     if not rows:
         sys.exit("データが取れませんでした（サイト構造が変わった可能性）")
     fields = list(rows[0])
