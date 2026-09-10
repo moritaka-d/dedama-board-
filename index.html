@@ -205,9 +205,16 @@
     }
     if (cur.length || row.length) { row.push(cur); rows.push(row); }
     const head = rows.shift();
-    return rows.filter(r => r.length >= 2).map(r => Object.fromEntries(head.map((h, i) => [h, r[i] ?? ""])));
+    // 見出しに store 列がないのに1列多い行は、店舗列付きで追記された行として読む
+    const noStore = !head.includes("store");
+    return rows.filter(r => r.length >= 2).map(r => {
+      if (noStore && r.length === head.length + 1) { const o = Object.fromEntries(head.map((h, i) => [h, r[i + 1] ?? ""])); o.store = r[0]; return o; }
+      return Object.fromEntries(head.map((h, i) => [h, r[i] ?? ""]));
+    });
   }
-  const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  // 日付の足し引き。toISOString() は世界標準時に変換されて日本では1日ずれるので使わない
+  const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
   const fmtDay = iso => { const d = new Date(iso + "T00:00:00"); return `${d.getMonth() + 1}/${d.getDate()}（${"日月火水木金土"[d.getDay()]}）`; };
 
   // ---------- データ整形: (kind, dai, day) ごとに1レコード ----------
