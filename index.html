@@ -32,6 +32,8 @@
   header h1 { margin: 0; font-family: var(--num); font-weight: 700; font-size: 34px; letter-spacing: .02em; line-height: 1; }
   header h1 small { font-family: var(--body); font-size: 13px; font-weight: 400; color: var(--ink-2); margin-left: 12px; }
   .updated { margin-left: auto; color: var(--ink-2); font-size: 13px; }
+  .updated button { margin-left: 10px; background: var(--panel); border: 1.5px solid var(--ink); border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+  .updated button:disabled { opacity: .5; cursor: default; }
 
   .controls { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 28px; align-items: center; }
   .seg { display: inline-flex; border: 1.5px solid var(--ink); border-radius: 4px; overflow: hidden; }
@@ -130,7 +132,7 @@
 })();
 </script>
 <header>
-  <h1>出玉ボード <small>台別成績（dedama.me より毎日取得）</small></h1>
+  <h1>出玉ボード <small>台別成績（dedama.me より毎日23時取得）</small></h1>
   <div class="updated" id="updated"></div>
 </header>
 
@@ -217,88 +219,114 @@
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
   const fmtDay = iso => { const d = new Date(iso + "T00:00:00"); return `${d.getMonth() + 1}/${d.getDate()}（${"日月火水木金土"[d.getDay()]}）`; };
 
-  // ---------- データ整形: (kind, dai, day) ごとに1レコード ----------
-  // 同じ日のデータが複数回取れている場合は「翌日以降に取得した確定値」を優先し、次に新しい取得日を優先
-  const recs = new Map();          // key -> {kind, dai, day, model, model_id, box, hit, prob}
-  let latestFetch = "", latestUpdated = "";
-  let raw;
-  try {
-    const res = await fetch("data/all.csv", { cache: "no-store" });
+  // ---------- 読み込み: data/index.json にある月ファイルを新しい順に、まず3か月分 ----------
+  const MONTHS_PER_LOAD = 3;
+  let months = [], loadedMonths = 0, raw = [];
+  let all = [], days = [], hist = new Map(), latestFetch = "", latestUpdated = "";
+
+  async function fetchText(path) {
+    const res = await fetch(path, { cache: "no-store" });
     if (!res.ok) throw new Error(res.status);
-    raw = parseCSV(await res.text());
-  } catch (e) {
-    $("#empty").innerHTML = "<code>data/all.csv</code> が読み込めません。<br>GitHub Actions が一度実行されると生成されます。";
-    return;
+    return res.text();
   }
-  // 取得時点で「本日」がまだ営業前（全台0）の取得日は、本日分を捨てる
-  for (const r of raw) { r.base = r.today_date || r.fetch_date; r.store = r.store || "東名"; }   // サイト側の「本日」/ 旧データは東名
-  const emptyToday = new Set();
-  { const m = new Map();
-    for (const r of raw) { const k = r.store + "|" + r.base; if (!m.has(k)) m.set(k, true); if (parseFloat(r.box_d0) !== 0 || parseInt(r.hit_d0, 10) !== 0) m.set(k, false); }
-    for (const [k, v] of m) if (v) emptyToday.add(k); }
-  // 機種名は、その日を「本日」として見た取得（=その日の営業前後）のものを正とする。
-  // 翌日の取得だと、入替後の新機種名で前日分が上書きされてしまうため。
-  const modelOnDay = new Map();
-  for (const r of raw) modelOnDay.set(`${r.store}|${r.kind}|${r.dai}|${r.base}`, { model: r.model, model_id: r.model_id });
-  for (const r of raw) {
-    if (r.fetch_date > latestFetch) { latestFetch = r.fetch_date; latestUpdated = r.site_updated; }
-    for (const [suffix, off] of [["d2", -2], ["d1", -1], ["d0", 0]]) {
-      if (off === 0 && emptyToday.has(r.store + "|" + r.base)) continue;
-      const day = addDays(r.base, off);
-      const box = parseFloat(r["box_" + suffix]), hit = parseInt(r["hit_" + suffix], 10);
-      if (isNaN(box) && isNaN(hit)) continue;
-      const key = `${r.store}|${r.kind}|${r.dai}|${day}`;
-      // 優先順位: 翌日取得(off=-1) > 翌々日取得(off=-2) > 当日取得。当日取得同士は新しい方
-      const rank = off < 0 ? 3e6 + off : 1e6 + Number(r.fetch_date.replace(/-/g, "").slice(2));
-      const prev = recs.get(key);
-      const md = modelOnDay.get(key) || { model: r.model, model_id: r.model_id };
-      if (!prev || rank > prev.rank) recs.set(key, { rank, store: r.store, kind: r.kind, dai: r.dai, day, model: md.model, model_id: md.model_id, box: isNaN(box) ? null : box, hit: isNaN(hit) ? null : hit, prob: r["prob_" + suffix] });
+  async function loadMore() {
+    const btn = $("#moreBtn"); if (btn) { btn.disabled = true; btn.textContent = "読み込み中…"; }
+    const next = months.slice(loadedMonths, loadedMonths + MONTHS_PER_LOAD);
+    for (const m of next) {
+      try { raw = raw.concat(parseCSV(await fetchText(`data/${m}.csv`))); } catch (e) { console.warn("読めません", m, e); }
     }
+    loadedMonths += next.length;
+    build(); refreshControls(); render();
   }
-  const all = [...recs.values()];
-  if (!all.length) { $("#empty").textContent = "データが空です。"; return; }
-  const days = [...new Set(all.map(r => r.day))].sort();
-  // 台ごとの履歴と、機種変更・撤去の検出
-  const hist = new Map();   // kind|dai -> rows sorted by day
-  for (const r of all) { const k = r.store + "|" + r.kind + "|" + r.dai; if (!hist.has(k)) hist.set(k, []); hist.get(k).push(r); }
-  for (const rs of hist.values()) rs.sort((a, b) => a.day.localeCompare(b.day));
-  for (const rs of hist.values()) {
-    for (let i = 0; i < rs.length; i++) {
-      rs[i].changed = i > 0 && rs[i].model !== rs[i - 1].model ? rs[i - 1].model : (i === 0 && rs[i].day !== days[0] ? "（新規）" : null);
-      rs[i].removedNext = i === rs.length - 1 && rs[i].day !== days.at(-1);
+  try {
+    months = JSON.parse(await fetchText("data/index.json")).months;
+  } catch (e) {
+    // 旧形式（all.csv だけ）のフォールバック
+    try { raw = parseCSV(await fetchText("data/all.csv")); months = []; }
+    catch (e2) { $("#empty").innerHTML = "<code>data/index.json</code> が読み込めません。<br>GitHub Actions が一度実行されると生成されます。"; return; }
+  }
+
+  // ---------- データ整形: (store, kind, dai, day) ごとに1レコード ----------
+  function build() {
+    // 同じ日のデータが複数回取れている場合は「翌日以降に取得した確定値」を優先し、次に新しい取得日を優先
+    const recs = new Map();
+    latestFetch = ""; latestUpdated = "";
+    for (const r of raw) { r.base = r.today_date || r.fetch_date; r.store = r.store || "東名"; }   // サイト側の「本日」/ 旧データは東名
+    // 取得時点で「本日」がまだ営業前（全台0）の取得日は、本日分を捨てる
+    const emptyToday = new Set();
+    { const m = new Map();
+      for (const r of raw) { const k = r.store + "|" + r.base; if (!m.has(k)) m.set(k, true); if (parseFloat(r.box_d0) !== 0 || parseInt(r.hit_d0, 10) !== 0) m.set(k, false); }
+      for (const [k, v] of m) if (v) emptyToday.add(k); }
+    // 機種名は、その日を「本日」として見た取得のものを正とする（翌日の取得だと入替後の新機種名で前日分が上書きされるため）
+    const modelOnDay = new Map();
+    for (const r of raw) modelOnDay.set(`${r.store}|${r.kind}|${r.dai}|${r.base}`, { model: r.model, model_id: r.model_id });
+    for (const r of raw) {
+      if (r.fetch_date > latestFetch) { latestFetch = r.fetch_date; latestUpdated = r.site_updated; }
+      for (const [suffix, off] of [["d2", -2], ["d1", -1], ["d0", 0]]) {
+        if (off === 0 && emptyToday.has(r.store + "|" + r.base)) continue;
+        const day = addDays(r.base, off);
+        const box = parseFloat(r["box_" + suffix]), hit = parseInt(r["hit_" + suffix], 10);
+        if (isNaN(box) && isNaN(hit)) continue;
+        const key = `${r.store}|${r.kind}|${r.dai}|${day}`;
+        // 優先順位: 翌日取得(off=-1) > 翌々日取得(off=-2) > 当日取得。当日取得同士は新しい方
+        const rank = off < 0 ? 3e6 + off : 1e6 + Number(r.fetch_date.replace(/-/g, "").slice(2));
+        const prev = recs.get(key);
+        const md = modelOnDay.get(key) || { model: r.model, model_id: r.model_id };
+        if (!prev || rank > prev.rank) recs.set(key, { rank, store: r.store, kind: r.kind, dai: r.dai, day, model: md.model, model_id: md.model_id, box: isNaN(box) ? null : box, hit: isNaN(hit) ? null : hit, prob: r["prob_" + suffix] });
+      }
+    }
+    all = [...recs.values()];
+    days = [...new Set(all.map(r => r.day))].sort();
+    // 台ごとの履歴と、機種変更・撤去の検出
+    hist = new Map();
+    for (const r of all) { const k = r.store + "|" + r.kind + "|" + r.dai; if (!hist.has(k)) hist.set(k, []); hist.get(k).push(r); }
+    for (const rs of hist.values()) rs.sort((a, b) => a.day.localeCompare(b.day));
+    for (const rs of hist.values()) {
+      for (let i = 0; i < rs.length; i++) {
+        rs[i].changed = i > 0 && rs[i].model !== rs[i - 1].model ? rs[i - 1].model : (i === 0 && rs[i].day !== days[0] ? "（新規）" : null);
+        rs[i].removedNext = i === rs.length - 1 && rs[i].day !== days.at(-1);
+      }
     }
   }
   // 現在の機種になってからの行だけ返す（それ以前の機種のデータは含めない）
   function currentRun(rs) { let i = rs.length - 1; while (i > 0 && rs[i].model === rs[i - 1].model) i--; return { rows: rs.slice(i), prev: i > 0 ? rs[i - 1].model : null }; }
-  state.day = days.at(-1);
-  $("#updated").textContent = `最終取得 ${latestFetch}（サイト更新 ${latestUpdated}）・${days.length}日分`;
-  $("#empty").hidden = true;
-  for (const id of ["boardSec", "colsSec", "dailySec"]) $("#" + id).hidden = false;
 
   // ---------- コントロール ----------
-  const daySel = $("#daySel");
-  for (const d of [...days].reverse()) daySel.append(new Option(fmtDay(d), d));
-  daySel.value = state.day;
-  daySel.onchange = () => { state.day = daySel.value; render(); };
+  const daySel = $("#daySel"), modelSel = $("#modelSel");
   function seg(id, key) {
     $(id).querySelectorAll("button").forEach(b => b.onclick = () => {
       $(id).querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
       state[key] = b.dataset.v; if (key === "kind" || key === "store") { state.model = ""; state.dai = null; fillModels(); } render();
     });
   }
-  const stores = [...new Set(all.map(r => r.store))];
-  state.store = stores[0];
-  $("#storeSeg").innerHTML = stores.map((st, i) => `<button aria-pressed="${i === 0}" data-v="${st}">${st}</button>`).join("");
-  seg("#storeSeg", "store"); seg("#kindSeg", "kind"); seg("#metricSeg", "metric");
-  const modelSel = $("#modelSel");
   function fillModels() {
     const names = [...new Set(all.filter(r => r.store === state.store && r.kind === state.kind).map(r => r.model))].sort();
     modelSel.innerHTML = '<option value="">すべて</option>';
     for (const n of names) modelSel.append(new Option(n, n));
     modelSel.value = state.model;
   }
+  function refreshControls() {
+    if (!all.length) { $("#empty").textContent = "データが空です。"; return; }
+    $("#empty").hidden = true;
+    for (const id of ["boardSec", "colsSec", "dailySec"]) $("#" + id).hidden = false;
+    if (!days.includes(state.day)) state.day = days.at(-1);
+    daySel.innerHTML = "";
+    for (const d of [...days].reverse()) daySel.append(new Option(fmtDay(d), d));
+    daySel.value = state.day;
+    const stores = [...new Set(all.map(r => r.store))];
+    if (!stores.includes(state.store)) state.store = stores[0];
+    $("#storeSeg").innerHTML = stores.map(st => `<button aria-pressed="${st === state.store}" data-v="${st}">${st}</button>`).join("");
+    seg("#storeSeg", "store");
+    fillModels();
+    const more = loadedMonths < months.length;
+    const range = months.length ? `${months[loadedMonths - 1].replace("-", "/")}〜 読み込み済み` : "";
+    $("#updated").innerHTML = `最終取得 ${latestFetch}（サイト更新 ${latestUpdated}）・${days.length}日分　${range}` +
+      (more ? ` <button id="moreBtn">さらに${Math.min(MONTHS_PER_LOAD, months.length - loadedMonths)}か月さかのぼる</button>` : "");
+    if (more) $("#moreBtn").onclick = loadMore;
+  }
+  daySel.onchange = () => { state.day = daySel.value; render(); };
   modelSel.onchange = () => { state.model = modelSel.value; render(); };
-  fillModels();
+  seg("#kindSeg", "kind"); seg("#metricSeg", "metric");
   document.querySelectorAll("#modelTbl th").forEach(th => th.onclick = () => {
     if (state.sortKey === th.dataset.k) state.sortDir *= -1; else { state.sortKey = th.dataset.k; state.sortDir = th.dataset.k === "model" ? 1 : -1; }
     document.querySelectorAll("#modelTbl th").forEach(x => x.classList.toggle("sorted", x === th)); renderTable();
@@ -422,7 +450,7 @@
   }
 
   function render() { renderBoard(); renderTable(); renderTrend(); renderDaily(); }
-  render();
+  if (months.length) await loadMore(); else { build(); refreshControls(); render(); }
 })();
 </script>
 </body>
