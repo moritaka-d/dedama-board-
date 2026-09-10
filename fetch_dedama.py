@@ -82,24 +82,62 @@ def main():
     if not rows:
         sys.exit("データが取れませんでした（サイト構造が変わった可能性）")
     fields = list(rows[0])
-    daily = OUT / f"{date.today().isoformat()}.csv"
-    with daily.open("w", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fields); w.writeheader(); w.writerows(rows)
-    allf = OUT / "all.csv"
-    old_rows = []
-    if allf.exists():
-        with allf.open(newline="", encoding="utf-8-sig") as f:
-            old_rows = list(csv.DictReader(f))
-    # 列が増えた（店舗追加など）場合は、古い行にも列を足して書き直す。店舗なしの古いデータは最初の店舗扱い
-    first_store = next(iter(STORES.values()))
-    for r in old_rows:
+
+    # 旧形式（all.csv / 日別csv）が残っていれば月別に振り分けて片付ける
+    migrate_old_files(fields)
+
+    # 月別ファイル（data/YYYY-MM.csv）に保存。同じ取得日の行がすでにあれば置き換える（再実行対策）
+    by_month = {}
+    for r in rows:
+        by_month.setdefault(month_of(r), []).append(r)
+    for month, mrows in by_month.items():
+        write_month(month, mrows, fields)
+    write_index()
+    print(f"{len(rows)} 台分を保存: " + ", ".join(f"{m}.csv" for m in sorted(by_month)))
+
+def month_of(r):
+    return (r.get("today_date") or r["fetch_date"])[:7]
+
+def read_csv(path):
+    with path.open(newline="", encoding="utf-8-sig") as f:
+        return list(csv.DictReader(f))
+
+def write_month(month, new_rows, fields):
+    """月ファイルに追記。同じ fetch_date の既存行は捨てて新しい行で置き換える"""
+    path = OUT / f"{month}.csv"
+    old = read_csv(path) if path.exists() else []
+    dates = {r["fetch_date"] for r in new_rows}
+    old = [r for r in old if r.get("fetch_date") not in dates]
+    for r in old:
         for k in fields:
             r.setdefault(k, "")
-        r["store"] = r["store"] or first_store
-    with allf.open("w", newline="", encoding="utf-8-sig") as f:
+    with path.open("w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fields, extrasaction="ignore"); w.writeheader()
-        w.writerows(old_rows); w.writerows(rows)
-    print(f"{len(rows)} 台分を {daily} に保存")
+        w.writerows(old); w.writerows(new_rows)
+
+def migrate_old_files(fields):
+    first_store = next(iter(STORES.values()))
+    allf = OUT / "all.csv"
+    if allf.exists():
+        old = read_csv(allf)
+        by_month = {}
+        for r in old:
+            for k in fields:
+                r.setdefault(k, "")
+            r["store"] = r["store"] or first_store
+            by_month.setdefault(month_of(r), []).append(r)
+        for month, mrows in by_month.items():
+            write_month(month, mrows, fields)
+        allf.unlink()
+        print(f"all.csv を月別に分割しました: {', '.join(sorted(by_month))}")
+    for p in OUT.glob("????-??-??.csv"):   # 日別ファイルは月別に含まれるので削除
+        p.unlink()
+
+def write_index():
+    """ダッシュボードが読む月の一覧（新しい順）"""
+    import json
+    months = sorted((p.stem for p in OUT.glob("????-??.csv")), reverse=True)
+    (OUT / "index.json").write_text(json.dumps({"months": months}, ensure_ascii=False))
 
 if __name__ == "__main__":
     main()
