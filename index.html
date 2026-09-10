@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>東名川崎吉兆</title>
+<title>出玉ボード</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
@@ -130,11 +130,12 @@
 })();
 </script>
 <header>
-  <h1>出玉ボード <small>吉兆 台別成績（dedama.me）</small></h1>
+  <h1>出玉ボード <small>台別成績（dedama.me より毎日取得）</small></h1>
   <div class="updated" id="updated"></div>
 </header>
 
 <div class="controls">
+  <div class="seg" id="storeSeg"></div>
   <div class="seg" id="kindSeg">
     <button aria-pressed="true" data-v="パチンコ">パチンコ</button>
     <button aria-pressed="false" data-v="スロット">スロット</button>
@@ -188,7 +189,7 @@
 <script>
 (async function () {
   const $ = s => document.querySelector(s);
-  const state = { kind: "パチンコ", metric: "box", day: null, model: "", dai: null, sortKey: "avgBox", sortDir: -1 };
+  const state = { store: null, kind: "パチンコ", metric: "box", day: null, model: "", dai: null, sortKey: "avgBox", sortDir: -1 };
 
   // ---------- CSV ----------
   function parseCSV(text) {
@@ -223,28 +224,28 @@
     return;
   }
   // 取得時点で「本日」がまだ営業前（全台0）の取得日は、本日分を捨てる
-  for (const r of raw) r.base = r.today_date || r.fetch_date;   // サイト側の「本日」
+  for (const r of raw) { r.base = r.today_date || r.fetch_date; r.store = r.store || "東名"; }   // サイト側の「本日」/ 旧データは東名
   const emptyToday = new Set();
   { const m = new Map();
-    for (const r of raw) { const k = r.base; if (!m.has(k)) m.set(k, true); if (parseFloat(r.box_d0) !== 0 || parseInt(r.hit_d0, 10) !== 0) m.set(k, false); }
+    for (const r of raw) { const k = r.store + "|" + r.base; if (!m.has(k)) m.set(k, true); if (parseFloat(r.box_d0) !== 0 || parseInt(r.hit_d0, 10) !== 0) m.set(k, false); }
     for (const [k, v] of m) if (v) emptyToday.add(k); }
   // 機種名は、その日を「本日」として見た取得（=その日の営業前後）のものを正とする。
   // 翌日の取得だと、入替後の新機種名で前日分が上書きされてしまうため。
   const modelOnDay = new Map();
-  for (const r of raw) modelOnDay.set(`${r.kind}|${r.dai}|${r.base}`, { model: r.model, model_id: r.model_id });
+  for (const r of raw) modelOnDay.set(`${r.store}|${r.kind}|${r.dai}|${r.base}`, { model: r.model, model_id: r.model_id });
   for (const r of raw) {
     if (r.fetch_date > latestFetch) { latestFetch = r.fetch_date; latestUpdated = r.site_updated; }
     for (const [suffix, off] of [["d2", -2], ["d1", -1], ["d0", 0]]) {
-      if (off === 0 && emptyToday.has(r.base)) continue;
+      if (off === 0 && emptyToday.has(r.store + "|" + r.base)) continue;
       const day = addDays(r.base, off);
       const box = parseFloat(r["box_" + suffix]), hit = parseInt(r["hit_" + suffix], 10);
       if (isNaN(box) && isNaN(hit)) continue;
-      const key = `${r.kind}|${r.dai}|${day}`;
+      const key = `${r.store}|${r.kind}|${r.dai}|${day}`;
       // 優先順位: 翌日取得(off=-1) > 翌々日取得(off=-2) > 当日取得。当日取得同士は新しい方
       const rank = off < 0 ? 3e6 + off : 1e6 + Number(r.fetch_date.replace(/-/g, "").slice(2));
       const prev = recs.get(key);
       const md = modelOnDay.get(key) || { model: r.model, model_id: r.model_id };
-      if (!prev || rank > prev.rank) recs.set(key, { rank, kind: r.kind, dai: r.dai, day, model: md.model, model_id: md.model_id, box: isNaN(box) ? null : box, hit: isNaN(hit) ? null : hit, prob: r["prob_" + suffix] });
+      if (!prev || rank > prev.rank) recs.set(key, { rank, store: r.store, kind: r.kind, dai: r.dai, day, model: md.model, model_id: md.model_id, box: isNaN(box) ? null : box, hit: isNaN(hit) ? null : hit, prob: r["prob_" + suffix] });
     }
   }
   const all = [...recs.values()];
@@ -252,7 +253,7 @@
   const days = [...new Set(all.map(r => r.day))].sort();
   // 台ごとの履歴と、機種変更・撤去の検出
   const hist = new Map();   // kind|dai -> rows sorted by day
-  for (const r of all) { const k = r.kind + "|" + r.dai; if (!hist.has(k)) hist.set(k, []); hist.get(k).push(r); }
+  for (const r of all) { const k = r.store + "|" + r.kind + "|" + r.dai; if (!hist.has(k)) hist.set(k, []); hist.get(k).push(r); }
   for (const rs of hist.values()) rs.sort((a, b) => a.day.localeCompare(b.day));
   for (const rs of hist.values()) {
     for (let i = 0; i < rs.length; i++) {
@@ -275,13 +276,16 @@
   function seg(id, key) {
     $(id).querySelectorAll("button").forEach(b => b.onclick = () => {
       $(id).querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
-      state[key] = b.dataset.v; if (key === "kind") { state.model = ""; state.dai = null; fillModels(); } render();
+      state[key] = b.dataset.v; if (key === "kind" || key === "store") { state.model = ""; state.dai = null; fillModels(); } render();
     });
   }
-  seg("#kindSeg", "kind"); seg("#metricSeg", "metric");
+  const stores = [...new Set(all.map(r => r.store))];
+  state.store = stores[0];
+  $("#storeSeg").innerHTML = stores.map((st, i) => `<button aria-pressed="${i === 0}" data-v="${st}">${st}</button>`).join("");
+  seg("#storeSeg", "store"); seg("#kindSeg", "kind"); seg("#metricSeg", "metric");
   const modelSel = $("#modelSel");
   function fillModels() {
-    const names = [...new Set(all.filter(r => r.kind === state.kind).map(r => r.model))].sort();
+    const names = [...new Set(all.filter(r => r.store === state.store && r.kind === state.kind).map(r => r.model))].sort();
     modelSel.innerHTML = '<option value="">すべて</option>';
     for (const n of names) modelSel.append(new Option(n, n));
     modelSel.value = state.model;
@@ -303,7 +307,7 @@
   }
 
   // ---------- 描画 ----------
-  const dayRows = () => all.filter(r => r.kind === state.kind && r.day === state.day && (!state.model || r.model === state.model));
+  const dayRows = () => all.filter(r => r.store === state.store && r.kind === state.kind && r.day === state.day && (!state.model || r.model === state.model));
 
   function renderBoard() {
     const rows = dayRows().sort((a, b) => a.dai.localeCompare(b.dai));
@@ -324,7 +328,7 @@
       board.append(b);
     }
     const chg = rows.filter(r => r.changed);
-    const removed = [...hist.values()].map(rs => rs.find(r => r.removedNext && r.kind === state.kind && (!state.model || r.model === state.model)))
+    const removed = [...hist.values()].map(rs => rs.find(r => r.removedNext && r.store === state.store && r.kind === state.kind && (!state.model || r.model === state.model)))
       .filter(r => r && addDays(r.day, 1) === state.day);
     const ch = $("#changes"); ch.innerHTML = "";
     if (chg.length) ch.innerHTML += `入替 ${chg.length}台: ` + chg.map(r => `<span><em>${r.dai}</em> ${r.changed} → ${r.model}</span>`).join("");
@@ -365,7 +369,7 @@
 
   function renderTrend() {
     const title = $("#trendTitle"), kpi = $("#kpi");
-    const h = state.dai ? hist.get(state.kind + "|" + state.dai) : null;
+    const h = state.dai ? hist.get(state.store + "|" + state.kind + "|" + state.dai) : null;
     if (!h) { title.innerHTML = `台の推移 <span>ボードの台をクリック</span>`; kpi.innerHTML = ""; trendChart?.destroy(); trendChart = null; return; }
     const { rows, prev } = currentRun(h);
     const last = rows.at(-1);
@@ -392,7 +396,7 @@
   }
 
   function renderDaily() {
-    const rows = all.filter(r => r.kind === state.kind && (!state.model || r.model === state.model));
+    const rows = all.filter(r => r.store === state.store && r.kind === state.kind && (!state.model || r.model === state.model));
     const byDay = new Map();
     for (const r of rows) { if (r.box == null) continue; if (!byDay.has(r.day)) byDay.set(r.day, []); byDay.get(r.day).push(r.box); }
     const ds = [...byDay].sort();
