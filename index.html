@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>出玉ボード</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --paper: #EDEFF2;
+    --panel: #FFFFFF;
+    --ink: #1C2130;
+    --ink-2: #5B6272;
+    --line: #D3D7DE;
+    --plus: #D9412A;
+    --minus: #2E6DB4;
+    --zero: #C9CDD4;
+    --num: "Barlow Condensed", "Noto Sans JP", sans-serif;
+    --body: "Noto Sans JP", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--body); font-size: 14px; line-height: 1.6; }
+  a { color: inherit; }
+  button, select { font: inherit; color: inherit; }
+
+  header {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 24px;
+    padding: 20px 28px 12px; border-bottom: 2px solid var(--ink);
+  }
+  header h1 { margin: 0; font-family: var(--num); font-weight: 700; font-size: 34px; letter-spacing: .02em; line-height: 1; }
+  header h1 small { font-family: var(--body); font-size: 13px; font-weight: 400; color: var(--ink-2); margin-left: 12px; }
+  .updated { margin-left: auto; color: var(--ink-2); font-size: 13px; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 28px; align-items: center; }
+  .seg { display: inline-flex; border: 1.5px solid var(--ink); border-radius: 4px; overflow: hidden; }
+  .seg button { border: 0; background: transparent; padding: 5px 14px; cursor: pointer; }
+  .seg button + button { border-left: 1.5px solid var(--ink); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+  .controls label { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); }
+  select { background: var(--panel); border: 1.5px solid var(--line); border-radius: 4px; padding: 5px 8px; }
+  select:focus, button:focus-visible { outline: 2px solid var(--minus); outline-offset: 2px; }
+
+  main { padding: 0 28px 48px; max-width: 1480px; margin: 0 auto; }
+  section { margin-top: 28px; }
+  h2 { font-size: 15px; font-weight: 700; margin: 0 0 10px; display: flex; align-items: baseline; gap: 14px; }
+  h2 span { font-weight: 400; color: var(--ink-2); font-size: 13px; }
+
+  /* フロアボード */
+  .board { display: flex; flex-wrap: wrap; gap: 3px; }
+  .cell {
+    width: 46px; height: 46px; border-radius: 3px; border: 0; cursor: pointer;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    font-family: var(--num); line-height: 1; color: var(--ink); background: var(--zero);
+    transition: transform .08s;
+  }
+  .cell:hover { transform: scale(1.08); z-index: 1; }
+  .cell.sel { outline: 3px solid var(--ink); outline-offset: 1px; }
+  .cell .no { font-size: 11px; font-weight: 500; opacity: .75; }
+  .cell .v  { font-size: 19px; font-weight: 700; }
+  .cell.dark { color: #fff; }
+  .cell.dark .no { opacity: .8; }
+  .cell.chg::after { content: ""; position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; background: #F5B400; border: 1.5px solid #fff; }
+  .cell { position: relative; }
+  .cell.gap { width: 14px; background: transparent; cursor: default; pointer-events: none; }
+  .legend { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--ink-2); font-size: 12px; }
+  .changes { margin-top: 8px; font-size: 13px; color: var(--ink-2); }
+  .changes span { display: inline-block; margin-right: 16px; }
+  .changes em { font-style: normal; color: var(--ink); font-family: var(--num); font-size: 15px; font-weight: 600; }
+  .legend i { display: inline-block; width: 90px; height: 10px; border-radius: 2px;
+    background: linear-gradient(90deg, var(--minus), var(--zero) 50%, var(--plus)); }
+
+  .cols { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 28px; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-weight: 500; color: var(--ink-2); font-size: 12px; cursor: pointer; user-select: none; }
+  th.sorted { color: var(--ink); }
+  th:first-child, td:first-child { text-align: left; }
+  td:first-child { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+  td.n { font-family: var(--num); font-size: 16px; font-weight: 600; }
+  td.pos { color: var(--plus); } td.neg { color: var(--minus); }
+  tr.clickable { cursor: pointer; } tr.clickable:hover td { background: #F5F6F8; }
+  .scroll { max-height: 520px; overflow: auto; }
+
+  .chartbox { position: relative; height: 300px; }
+  .kpi { display: flex; gap: 28px; margin-bottom: 8px; flex-wrap: wrap; }
+  .kpi div b { display: block; font-family: var(--num); font-size: 30px; font-weight: 700; line-height: 1.1; }
+  .kpi div { color: var(--ink-2); font-size: 12px; }
+
+  .empty { padding: 60px 20px; text-align: center; color: var(--ink-2); }
+  .empty code { background: var(--panel); padding: 2px 6px; border-radius: 3px; }
+  @media (prefers-reduced-motion: reduce) { .cell { transition: none; } .cell:hover { transform: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>出玉ボード <small>吉兆 台別成績（dedama.me より毎日取得）</small></h1>
+  <div class="updated" id="updated"></div>
+</header>
+
+<div class="controls">
+  <div class="seg" id="kindSeg">
+    <button aria-pressed="true" data-v="パチンコ">パチンコ</button>
+    <button aria-pressed="false" data-v="スロット">スロット</button>
+  </div>
+  <label>日付 <select id="daySel"></select></label>
+  <div class="seg" id="metricSeg">
+    <button aria-pressed="true" data-v="box">箱数</button>
+    <button aria-pressed="false" data-v="hit">大当り回数</button>
+  </div>
+  <label>機種 <select id="modelSel"><option value="">すべて</option></select></label>
+</div>
+
+<main id="main">
+  <div class="empty" id="empty">読み込み中…</div>
+
+  <section id="boardSec" hidden>
+    <h2>フロアボード <span id="boardNote"></span></h2>
+    <div class="board" id="board"></div>
+    <div class="legend">マイナス <i></i> プラス　<b style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#F5B400;margin:0 4px 0 12px"></b>この日に機種が変わった台　台をクリックすると推移を表示</div>
+    <div class="changes" id="changes"></div>
+  </section>
+
+  <section class="cols" id="colsSec" hidden>
+    <div class="panel">
+      <h2>機種別 <span>その日の平均</span></h2>
+      <div class="scroll">
+        <table id="modelTbl">
+          <thead><tr>
+            <th data-k="model">機種</th><th data-k="n">台数</th>
+            <th data-k="avgBox" class="sorted">平均箱</th><th data-k="plusRate">プラス率</th><th data-k="avgHit">平均当り</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel">
+      <h2 id="trendTitle">台の推移 <span>ボードの台をクリック</span></h2>
+      <div class="kpi" id="kpi"></div>
+      <div class="chartbox"><canvas id="trend"></canvas></div>
+    </div>
+  </section>
+
+  <section id="dailySec" hidden>
+    <div class="panel">
+      <h2>店全体の推移 <span>1日あたりの平均箱数と、プラスで終わった台の割合</span></h2>
+      <div class="chartbox"><canvas id="daily"></canvas></div>
+    </div>
+  </section>
+</main>
+
+<script>
+(async function () {
+  const $ = s => document.querySelector(s);
+  const state = { kind: "パチンコ", metric: "box", day: null, model: "", dai: null, sortKey: "avgBox", sortDir: -1 };
+
+  // ---------- CSV ----------
+  function parseCSV(text) {
+    text = text.replace(/^\uFEFF/, "");
+    const rows = []; let row = [], cur = "", q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) { if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
+      else if (c === '"') q = true;
+      else if (c === ",") { row.push(cur); cur = ""; }
+      else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cur); rows.push(row); row = []; cur = ""; }
+      else cur += c;
+    }
+    if (cur.length || row.length) { row.push(cur); rows.push(row); }
+    const head = rows.shift();
+    return rows.filter(r => r.length === head.length).map(r => Object.fromEntries(head.map((h, i) => [h, r[i]])));
+  }
+  const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  const fmtDay = iso => { const d = new Date(iso + "T00:00:00"); return `${d.getMonth() + 1}/${d.getDate()}（${"日月火水木金土"[d.getDay()]}）`; };
+
+  // ---------- データ整形: (kind, dai, day) ごとに1レコード ----------
+  // 同じ日のデータが複数回取れている場合は「翌日以降に取得した確定値」を優先し、次に新しい取得日を優先
+  const recs = new Map();          // key -> {kind, dai, day, model, model_id, box, hit, prob}
+  let latestFetch = "", latestUpdated = "";
+  let raw;
+  try {
+    const res = await fetch("data/all.csv", { cache: "no-store" });
+    if (!res.ok) throw new Error(res.status);
+    raw = parseCSV(await res.text());
+  } catch (e) {
+    $("#empty").innerHTML = "<code>data/all.csv</code> が読み込めません。<br>GitHub Actions が一度実行されると生成されます。";
+    return;
+  }
+  // 取得時点で「本日」がまだ営業前（全台0）の取得日は、本日分を捨てる
+  for (const r of raw) r.base = r.today_date || r.fetch_date;   // サイト側の「本日」
+  const emptyToday = new Set();
+  { const m = new Map();
+    for (const r of raw) { const k = r.base; if (!m.has(k)) m.set(k, true); if (parseFloat(r.box_d0) !== 0 || parseInt(r.hit_d0, 10) !== 0) m.set(k, false); }
+    for (const [k, v] of m) if (v) emptyToday.add(k); }
+  // 機種名は、その日を「本日」として見た取得（=その日の営業前後）のものを正とする。
+  // 翌日の取得だと、入替後の新機種名で前日分が上書きされてしまうため。
+  const modelOnDay = new Map();
+  for (const r of raw) modelOnDay.set(`${r.kind}|${r.dai}|${r.base}`, { model: r.model, model_id: r.model_id });
+  for (const r of raw) {
+    if (r.fetch_date > latestFetch) { latestFetch = r.fetch_date; latestUpdated = r.site_updated; }
+    for (const [suffix, off] of [["d2", -2], ["d1", -1], ["d0", 0]]) {
+      if (off === 0 && emptyToday.has(r.base)) continue;
+      const day = addDays(r.base, off);
+      const box = parseFloat(r["box_" + suffix]), hit = parseInt(r["hit_" + suffix], 10);
+      if (isNaN(box) && isNaN(hit)) continue;
+      const key = `${r.kind}|${r.dai}|${day}`;
+      // 優先順位: 翌日取得(off=-1) > 翌々日取得(off=-2) > 当日取得。当日取得同士は新しい方
+      const rank = off < 0 ? 3e6 + off : 1e6 + Number(r.fetch_date.replace(/-/g, "").slice(2));
+      const prev = recs.get(key);
+      const md = modelOnDay.get(key) || { model: r.model, model_id: r.model_id };
+      if (!prev || rank > prev.rank) recs.set(key, { rank, kind: r.kind, dai: r.dai, day, model: md.model, model_id: md.model_id, box: isNaN(box) ? null : box, hit: isNaN(hit) ? null : hit, prob: r["prob_" + suffix] });
+    }
+  }
+  const all = [...recs.values()];
+  if (!all.length) { $("#empty").textContent = "データが空です。"; return; }
+  const days = [...new Set(all.map(r => r.day))].sort();
+  // 台ごとの履歴と、機種変更・撤去の検出
+  const hist = new Map();   // kind|dai -> rows sorted by day
+  for (const r of all) { const k = r.kind + "|" + r.dai; if (!hist.has(k)) hist.set(k, []); hist.get(k).push(r); }
+  for (const rs of hist.values()) rs.sort((a, b) => a.day.localeCompare(b.day));
+  for (const rs of hist.values()) {
+    for (let i = 0; i < rs.length; i++) {
+      rs[i].changed = i > 0 && rs[i].model !== rs[i - 1].model ? rs[i - 1].model : (i === 0 && rs[i].day !== days[0] ? "（新規）" : null);
+      rs[i].removedNext = i === rs.length - 1 && rs[i].day !== days.at(-1);
+    }
+  }
+  // 現在の機種になってからの行だけ返す（それ以前の機種のデータは含めない）
+  function currentRun(rs) { let i = rs.length - 1; while (i > 0 && rs[i].model === rs[i - 1].model) i--; return { rows: rs.slice(i), prev: i > 0 ? rs[i - 1].model : null }; }
+  state.day = days.at(-1);
+  $("#updated").textContent = `最終取得 ${latestFetch}（サイト更新 ${latestUpdated}）・${days.length}日分`;
+  $("#empty").hidden = true;
+  for (const id of ["boardSec", "colsSec", "dailySec"]) $("#" + id).hidden = false;
+
+  // ---------- コントロール ----------
+  const daySel = $("#daySel");
+  for (const d of [...days].reverse()) daySel.append(new Option(fmtDay(d), d));
+  daySel.value = state.day;
+  daySel.onchange = () => { state.day = daySel.value; render(); };
+  function seg(id, key) {
+    $(id).querySelectorAll("button").forEach(b => b.onclick = () => {
+      $(id).querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b));
+      state[key] = b.dataset.v; if (key === "kind") { state.model = ""; state.dai = null; fillModels(); } render();
+    });
+  }
+  seg("#kindSeg", "kind"); seg("#metricSeg", "metric");
+  const modelSel = $("#modelSel");
+  function fillModels() {
+    const names = [...new Set(all.filter(r => r.kind === state.kind).map(r => r.model))].sort();
+    modelSel.innerHTML = '<option value="">すべて</option>';
+    for (const n of names) modelSel.append(new Option(n, n));
+    modelSel.value = state.model;
+  }
+  modelSel.onchange = () => { state.model = modelSel.value; render(); };
+  fillModels();
+  document.querySelectorAll("#modelTbl th").forEach(th => th.onclick = () => {
+    if (state.sortKey === th.dataset.k) state.sortDir *= -1; else { state.sortKey = th.dataset.k; state.sortDir = th.dataset.k === "model" ? 1 : -1; }
+    document.querySelectorAll("#modelTbl th").forEach(x => x.classList.toggle("sorted", x === th)); renderTable();
+  });
+
+  // ---------- 色 ----------
+  function mix(a, b, t) { const p = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); const A = p(a), B = p(b); return `rgb(${A.map((x, i) => Math.round(x + (B[i] - x) * t)).join(",")})`; }
+  const C = { plus: "#D9412A", minus: "#2E6DB4", zero: "#C9CDD4" };
+  function color(v, scale) {
+    if (v == null) return { bg: "#E6E8EC", dark: false };
+    const t = Math.min(1, Math.abs(v) / scale);
+    return v >= 0 ? { bg: mix(C.zero, C.plus, t), dark: t > .5 } : { bg: mix(C.zero, C.minus, t), dark: t > .5 };
+  }
+
+  // ---------- 描画 ----------
+  const dayRows = () => all.filter(r => r.kind === state.kind && r.day === state.day && (!state.model || r.model === state.model));
+
+  function renderBoard() {
+    const rows = dayRows().sort((a, b) => a.dai.localeCompare(b.dai));
+    const board = $("#board"); board.innerHTML = "";
+    const scale = state.metric === "box" ? 4 : Math.max(10, ...rows.map(r => r.hit || 0)) ;
+    let prevModel = null;
+    for (const r of rows) {
+      if (prevModel !== null && r.model !== prevModel) { const g = document.createElement("span"); g.className = "cell gap"; board.append(g); }
+      prevModel = r.model;
+      const v = state.metric === "box" ? r.box : r.hit;
+      const c = color(state.metric === "box" ? v : (v == null ? null : v), scale);
+      const b = document.createElement("button");
+      b.className = "cell" + (c.dark ? " dark" : "") + (state.dai === r.dai ? " sel" : "") + (r.changed ? " chg" : "");
+      b.style.background = c.bg;
+      b.title = `${r.dai}  ${r.model}\n箱 ${r.box ?? "-"} / 当り ${r.hit ?? "-"} / ${r.prob || "-"}` + (r.changed ? `\nこの日から機種変更 ← ${r.changed}` : "");
+      b.innerHTML = `<span class="no">${r.dai}</span><span class="v">${v == null ? "–" : (state.metric === "box" ? v.toFixed(1) : v)}</span>`;
+      b.onclick = () => { state.dai = r.dai; renderBoard(); renderTrend(); };
+      board.append(b);
+    }
+    const chg = rows.filter(r => r.changed);
+    const removed = [...hist.values()].map(rs => rs.find(r => r.removedNext && r.kind === state.kind && (!state.model || r.model === state.model)))
+      .filter(r => r && addDays(r.day, 1) === state.day);
+    const ch = $("#changes"); ch.innerHTML = "";
+    if (chg.length) ch.innerHTML += `入替 ${chg.length}台: ` + chg.map(r => `<span><em>${r.dai}</em> ${r.changed} → ${r.model}</span>`).join("");
+    if (removed.length) ch.innerHTML += `<br>この日から消えた台 ${removed.length}台: ` + removed.map(r => `<span><em>${r.dai}</em> ${r.model}</span>`).join("");
+    const plus = rows.filter(r => r.box > 0).length;
+    $("#boardNote").textContent = `${fmtDay(state.day)}　${rows.length}台　プラス ${plus}台（${rows.length ? Math.round(plus / rows.length * 100) : 0}%）`;
+  }
+
+  function renderTable() {
+    const groups = new Map();
+    for (const r of dayRows()) { if (!groups.has(r.model)) groups.set(r.model, []); groups.get(r.model).push(r); }
+    const stats = [...groups].map(([model, rs]) => {
+      const boxes = rs.map(r => r.box).filter(v => v != null), hits = rs.map(r => r.hit).filter(v => v != null);
+      return { model, n: rs.length, avgBox: boxes.length ? boxes.reduce((a, b) => a + b) / boxes.length : null,
+        plusRate: boxes.length ? boxes.filter(v => v > 0).length / boxes.length : null,
+        avgHit: hits.length ? hits.reduce((a, b) => a + b) / hits.length : null };
+    });
+    const k = state.sortKey, d = state.sortDir;
+    stats.sort((a, b) => k === "model" ? d * a.model.localeCompare(b.model) : d * ((a[k] ?? -1e9) - (b[k] ?? -1e9)));
+    const tb = $("#modelTbl tbody"); tb.innerHTML = "";
+    for (const s of stats) {
+      const tr = document.createElement("tr"); tr.className = "clickable";
+      const cls = v => v == null ? "" : v > 0 ? "pos" : v < 0 ? "neg" : "";
+      tr.innerHTML = `<td title="${s.model}">${s.model}</td><td class="n">${s.n}</td>` +
+        `<td class="n ${cls(s.avgBox)}">${s.avgBox == null ? "–" : s.avgBox.toFixed(2)}</td>` +
+        `<td class="n">${s.plusRate == null ? "–" : Math.round(s.plusRate * 100) + "%"}</td>` +
+        `<td class="n">${s.avgHit == null ? "–" : s.avgHit.toFixed(1)}</td>`;
+      tr.onclick = () => { state.model = state.model === s.model ? "" : s.model; modelSel.value = state.model; render(); };
+      tb.append(tr);
+    }
+  }
+
+  let trendChart, dailyChart;
+  const baseOpts = { responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: "index", intersect: false },
+    plugins: { legend: { labels: { font: { family: "Noto Sans JP" } } } },
+    scales: { x: { grid: { display: false }, ticks: { font: { family: "Barlow Condensed", size: 13 } } } } };
+
+  function renderTrend() {
+    const title = $("#trendTitle"), kpi = $("#kpi");
+    const h = state.dai ? hist.get(state.kind + "|" + state.dai) : null;
+    if (!h) { title.innerHTML = `台の推移 <span>ボードの台をクリック</span>`; kpi.innerHTML = ""; trendChart?.destroy(); trendChart = null; return; }
+    const { rows, prev } = currentRun(h);
+    const last = rows.at(-1);
+    title.innerHTML = `${state.dai}番台 <span>${last.model}` +
+      (prev ? `　${rows[0].day.slice(5).replace("-", "/")} に入替（旧: ${prev} の分は含めていません）` : "") +
+      (last.removedNext ? `　${addDays(last.day, 1).slice(5).replace("-", "/")} 以降データなし（撤去?）` : "") + `</span>`;
+    const boxes = rows.map(r => r.box).filter(v => v != null);
+    const sum = boxes.reduce((a, b) => a + b, 0);
+    kpi.innerHTML = `<div><b style="color:${sum >= 0 ? C.plus : C.minus}">${sum >= 0 ? "+" : ""}${sum.toFixed(1)}</b>${boxes.length}日間の合計箱</div>` +
+      `<div><b>${boxes.length ? Math.round(boxes.filter(v => v > 0).length / boxes.length * 100) : 0}%</b>プラスの日</div>` +
+      `<div><b>${rows.reduce((a, r) => a + (r.hit || 0), 0)}</b>合計大当り</div>`;
+    const data = {
+      labels: rows.map(r => r.day.slice(5).replace("-", "/")),
+      datasets: [
+        { type: "bar", label: "箱数", data: rows.map(r => r.box), backgroundColor: rows.map(r => r.box >= 0 ? C.plus : C.minus), yAxisID: "y", order: 2 },
+        { type: "line", label: "大当り回数", data: rows.map(r => r.hit), borderColor: "#1C2130", backgroundColor: "#1C2130", pointRadius: 3, tension: .2, yAxisID: "y2", order: 1 },
+      ]
+    };
+    const opts = structuredClone(baseOpts);
+    opts.scales.y = { position: "left", title: { display: true, text: "箱" }, grid: { color: "#E6E8EC" } };
+    opts.scales.y2 = { position: "right", beginAtZero: true, title: { display: true, text: "回" }, grid: { display: false } };
+    if (trendChart) { trendChart.data = data; trendChart.options = opts; trendChart.update(); }
+    else trendChart = new Chart($("#trend"), { data, options: opts });
+  }
+
+  function renderDaily() {
+    const rows = all.filter(r => r.kind === state.kind && (!state.model || r.model === state.model));
+    const byDay = new Map();
+    for (const r of rows) { if (r.box == null) continue; if (!byDay.has(r.day)) byDay.set(r.day, []); byDay.get(r.day).push(r.box); }
+    const ds = [...byDay].sort();
+    const data = {
+      labels: ds.map(([d]) => d.slice(5).replace("-", "/")),
+      datasets: [
+        { type: "line", label: "平均箱数", data: ds.map(([, v]) => v.reduce((a, b) => a + b) / v.length), borderColor: C.plus, backgroundColor: C.plus, pointRadius: 3, tension: .2, yAxisID: "y" },
+        { type: "line", label: "プラス台の割合(%)", data: ds.map(([, v]) => v.filter(x => x > 0).length / v.length * 100), borderColor: C.minus, backgroundColor: C.minus, pointRadius: 3, tension: .2, yAxisID: "y2", borderDash: [4, 3] },
+      ]
+    };
+    const opts = structuredClone(baseOpts);
+    opts.scales.y = { position: "left", title: { display: true, text: "箱" }, grid: { color: "#E6E8EC" } };
+    opts.scales.y2 = { position: "right", min: 0, max: 100, title: { display: true, text: "%" }, grid: { display: false } };
+    if (dailyChart) { dailyChart.data = data; dailyChart.update(); }
+    else dailyChart = new Chart($("#daily"), { data, options: opts });
+  }
+
+  function render() { renderBoard(); renderTable(); renderTrend(); renderDaily(); }
+  render();
+})();
+</script>
+</body>
+</html>
