@@ -92,7 +92,7 @@
   .kpi div { color: var(--ink-2); font-size: 12px; }
 
   #gate { position: fixed; inset: 0; background: var(--paper); z-index: 10; display: flex; align-items: center; justify-content: center; }
-  #gate > div { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 28px 32px; width: 300px; display: flex; flex-direction: column; gap: 12px; }
+  #gate > div { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 28px 32px; width: 310px; display: flex; flex-direction: column; gap: 12px; }
   #gate h1 { font-family: var(--num); font-size: 30px; margin: 0 0 6px; }
   #gate label { display: flex; flex-direction: column; gap: 4px; color: var(--ink-2); font-size: 13px; }
   #gate input { font: inherit; padding: 7px 10px; border: 1.5px solid var(--line); border-radius: 4px; }
@@ -205,7 +205,7 @@
     }
     if (cur.length || row.length) { row.push(cur); rows.push(row); }
     const head = rows.shift();
-    return rows.filter(r => r.length === head.length).map(r => Object.fromEntries(head.map((h, i) => [h, r[i]])));
+    return rows.filter(r => r.length >= 2).map(r => Object.fromEntries(head.map((h, i) => [h, r[i] ?? ""])));
   }
   const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
   const fmtDay = iso => { const d = new Date(iso + "T00:00:00"); return `${d.getMonth() + 1}/${d.getDate()}（${"日月火水木金土"[d.getDay()]}）`; };
