@@ -105,7 +105,7 @@ def read_csv(path):
 def write_month(month, new_rows, fields):
     """月ファイルに追記。同じ fetch_date の既存行は捨てて新しい行で置き換える"""
     path = OUT / f"{month}.csv"
-    old = read_csv(path) if path.exists() else []
+    old = [r for r in read_csv(path) if re.fullmatch(r"\d{4}-\d{2}-\d{2}", r.get("fetch_date") or "")] if path.exists() else []
     dates = {r["fetch_date"] for r in new_rows}
     old = [r for r in old if r.get("fetch_date") not in dates]
     for r in old:
@@ -119,7 +119,7 @@ def migrate_old_files(fields):
     first_store = next(iter(STORES.values()))
     allf = OUT / "all.csv"
     if allf.exists():
-        old = read_csv(allf)
+        old = [r for r in read_csv(allf) if re.fullmatch(r"\d{4}-\d{2}-\d{2}", r.get("fetch_date") or "")]  # 列ずれで壊れた行は捨てる
         by_month = {}
         for r in old:
             for k in fields:
