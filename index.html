@@ -40,9 +40,8 @@
   .seg button { border: 0; background: transparent; padding: 5px 14px; cursor: pointer; }
   .seg button + button { border-left: 1.5px solid var(--ink); }
   .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
-  .seg .ext { display: inline-flex; align-items: center; padding: 0 8px; border-left: 1.5px solid var(--ink); color: var(--ink-2); text-decoration: none; }
-  .seg .ext:hover { color: var(--ink); background: #F5F6F8; }
-  .seg .ext + button { border-left: 1.5px solid var(--ink); }
+  .ext { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1.5px solid var(--ink); border-radius: 4px; color: var(--ink-2); background: var(--panel); text-decoration: none; }
+  .ext:hover { color: var(--ink); background: #F5F6F8; }
   .controls label { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); }
   select { background: var(--panel); border: 1.5px solid var(--line); border-radius: 4px; padding: 5px 8px; }
   select:focus, button:focus-visible { outline: 2px solid var(--minus); outline-offset: 2px; }
@@ -151,6 +150,7 @@
     <button aria-pressed="false" data-v="hit">大当り回数</button>
   </div>
   <label>機種 <select id="modelSel"><option value="">すべて</option></select></label>
+  <a id="storeLink" class="ext" target="_blank" rel="noopener" hidden></a>
 </div>
 
 <main id="main">
@@ -257,6 +257,7 @@
     // 同じ日のデータが複数回取れている場合は「翌日以降に取得した確定値」を優先し、次に新しい取得日を優先
     const recs = new Map();
     latestFetch = ""; latestUpdated = "";
+    raw = raw.filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.fetch_date));   // 列ずれで壊れた行は捨てる
     for (const r of raw) { r.base = r.today_date || r.fetch_date; r.store = r.store || "東名"; }   // サイト側の「本日」/ 旧データは東名
     // 取得時点で「本日」がまだ営業前（全台0）の取得日は、本日分を捨てる
     const emptyToday = new Set();
@@ -321,13 +322,11 @@
     daySel.value = state.day;
     const stores = [...new Set(all.map(r => r.store))];
     if (!stores.includes(state.store)) state.store = stores[0];
-    $("#storeSeg").innerHTML = stores.map(st => `<button aria-pressed="${st === state.store}" data-v="${st}">${st}</button>` +
-    (STORE_URLS[st] ? `<a class="ext" href="${STORE_URLS[st]}" target="_blank" rel="noopener" title="${st}のサイトを開く">${LINK_ICON}</a>` : "")).join("");
+    $("#storeSeg").innerHTML = stores.map(st => `<button aria-pressed="${st === state.store}" data-v="${st}">${st}</button>`).join("");
     seg("#storeSeg", "store");
     fillModels();
     const more = loadedMonths < months.length;
-    const range = months.length ? `${months[loadedMonths - 1].replace("-", "/")}〜 読み込み済み` : "";
-    $("#updated").innerHTML = `最終取得 ${latestFetch}（サイト更新 ${latestUpdated}）・${days.length}日分　${range}` +
+    $("#updated").innerHTML = `更新日：${days.at(-1)}` +
       (more ? ` <button id="moreBtn">さらに${Math.min(MONTHS_PER_LOAD, months.length - loadedMonths)}か月さかのぼる</button>` : "");
     if (more) $("#moreBtn").onclick = loadMore;
   }
@@ -443,7 +442,7 @@
     for (const r of rows) { if (r.box == null) continue; if (!byDay.has(r.day)) byDay.set(r.day, []); byDay.get(r.day).push(r.box); }
     const ds = [...byDay].sort();
     $("#dailyTitle").innerHTML = state.model
-      ? `${state.model} の推移 <span>1日あたりの平均箱数と、プラスで終わった台の割合（台移動しても機種名で集計）</span>`
+      ? `${state.model} の推移 <span>この機種の1日あたりの平均箱数と、プラスで終わった台の割合（台移動しても機種名で集計）</span>`
       : `店全体の推移 <span>1日あたりの平均箱数と、プラスで終わった台の割合</span>`;
     const counts = ds.map(([, v]) => v.length);
     const data = {
@@ -461,7 +460,12 @@
     else dailyChart = new Chart($("#daily"), { data, options: opts });
   }
 
-  function render() { renderBoard(); renderTable(); renderTrend(); renderDaily(); }
+  function renderLink() {
+    const a = $("#storeLink"), url = STORE_URLS[state.store];
+    a.hidden = !url; if (!url) return;
+    a.href = url; a.title = `${state.store}のサイトを開く（別タブ）`; a.innerHTML = LINK_ICON;
+  }
+  function render() { renderLink(); renderBoard(); renderTable(); renderTrend(); renderDaily(); }
   if (months.length) await loadMore(); else { build(); refreshControls(); render(); }
 })();
 </script>
