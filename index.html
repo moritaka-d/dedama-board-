@@ -76,7 +76,7 @@
   .legend i { display: inline-block; width: 90px; height: 10px; border-radius: 2px;
     background: linear-gradient(90deg, var(--minus), var(--zero) 50%, var(--plus)); }
 
-  .cols { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 28px; }
+  .cols { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 28px; }
   @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
 
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; }
@@ -151,7 +151,7 @@
     <button aria-pressed="false" data-v="hit">大当り回数</button>
   </div>
   <label>機種 <select id="modelSel"><option value="">すべて</option></select></label>
-  <a id="storeLink" class="ext" target="_blank" rel="noopener" hidden></a>
+  <a id="storeLink" class="ext" target="_blank" rel="noopener noreferrer" hidden></a>
 </div>
 
 <main id="main">
@@ -166,6 +166,11 @@
 
   <section class="cols" id="colsSec" hidden>
     <div class="panel">
+      <h2 id="trendTitle">台の推移 <span>ボードの台をクリック</span></h2>
+      <div class="kpi" id="kpi"></div>
+      <div class="chartbox"><canvas id="trend"></canvas></div>
+    </div>
+    <div class="panel">
       <h2>機種別 <span>その日の平均</span></h2>
       <div class="scroll">
         <table id="modelTbl">
@@ -176,11 +181,6 @@
           <tbody></tbody>
         </table>
       </div>
-    </div>
-    <div class="panel">
-      <h2 id="trendTitle">台の推移 <span>ボードの台をクリック</span></h2>
-      <div class="kpi" id="kpi"></div>
-      <div class="chartbox"><canvas id="trend"></canvas></div>
     </div>
   </section>
 
