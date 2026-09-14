@@ -89,7 +89,15 @@
   td.n { font-family: var(--num); font-size: 16px; font-weight: 600; }
   td.pos { color: var(--plus); } td.neg { color: var(--minus); }
   tr.clickable { cursor: pointer; } tr.clickable:hover td { background: #F5F6F8; }
+  tr.sel td { background: #FDF1EE; }
   .scroll { max-height: 520px; overflow: auto; }
+
+  /* ランキング */
+  #rankTbl th { cursor: default; }
+  #rankTbl th:first-child, #rankTbl td:first-child { text-align: right; width: 36px; }
+  #rankTbl td:first-child { color: var(--ink-2); font-size: 14px; }
+  #rankTbl th:nth-child(3), #rankTbl td:nth-child(3) { text-align: left; }
+  #rankTbl td:nth-child(3) { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
 
   .chartbox { position: relative; height: 300px; }
   .kpi { display: flex; gap: 28px; margin-bottom: 8px; flex-wrap: wrap; }
@@ -184,10 +192,19 @@
     </div>
   </section>
 
-  <section id="dailySec" hidden>
+  <section class="cols" id="dailySec" hidden>
     <div class="panel">
       <h2 id="dailyTitle">店全体の推移 <span>1日あたりの平均箱数と、プラスで終わった台の割合</span></h2>
       <div class="chartbox"><canvas id="daily"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2 id="rankTitle">箱数ランキング <span>その日の上位20台</span></h2>
+      <div class="scroll">
+        <table id="rankTbl">
+          <thead><tr><th>#</th><th>台</th><th>機種</th><th>箱</th><th>当り</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
   </section>
 </main>
@@ -366,7 +383,7 @@
       b.style.background = c.bg;
       b.title = `${r.dai}  ${r.model}\n箱 ${r.box ?? "-"} / 当り ${r.hit ?? "-"} / ${r.prob || "-"}` + (r.changed ? `\nこの日から機種変更 ← ${r.changed}` : "");
       b.innerHTML = `<span class="no">${r.dai}</span><span class="v">${v == null ? "–" : (state.metric === "box" ? v.toFixed(1) : v)}</span>`;
-      b.onclick = () => { state.dai = r.dai; renderBoard(); renderTrend(); };
+      b.onclick = () => { state.dai = r.dai; renderBoard(); renderTrend(); renderRank(); };
       board.append(b);
     }
     const chg = rows.filter(r => r.changed);
@@ -404,10 +421,52 @@
     }
   }
 
+  // その日の上位20台（箱数 / 大当り回数 の切替に連動、機種絞り込みも反映）
+  function renderRank() {
+    const isBox = state.metric === "box";
+    const val = r => isBox ? r.box : r.hit;
+    const rows = dayRows().filter(r => val(r) != null)
+      .sort((a, b) => (val(b) - val(a)) || ((isBox ? b.hit : b.box) ?? 0) - ((isBox ? a.hit : a.box) ?? 0))
+      .slice(0, 20);
+    $("#rankTitle").innerHTML = `${isBox ? "箱数" : "大当り回数"}ランキング <span>${fmtDay(state.day)} の上位${rows.length}台${state.model ? "（" + state.model + "）" : ""}</span>`;
+    const tb = $("#rankTbl tbody"); tb.innerHTML = "";
+    const cls = v => v == null ? "" : v > 0 ? "pos" : v < 0 ? "neg" : "";
+    rows.forEach((r, i) => {
+      const tr = document.createElement("tr"); tr.className = "clickable" + (state.dai === r.dai ? " sel" : "");
+      tr.innerHTML = `<td class="n">${i + 1}</td><td class="n">${r.dai}</td><td title="${r.model}">${r.model}</td>` +
+        `<td class="n ${cls(r.box)}">${r.box == null ? "–" : r.box.toFixed(1)}</td><td class="n">${r.hit ?? "–"}</td>`;
+      tr.onclick = () => { state.dai = r.dai; renderBoard(); renderTrend(); renderRank(); };
+      tb.append(tr);
+    });
+  }
+
   let trendChart, dailyChart;
   const baseOpts = { responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: "index", intersect: false },
     plugins: { legend: { labels: { font: { family: "Noto Sans JP" } } } },
     scales: { x: { grid: { display: false }, ticks: { font: { family: "Barlow Condensed", size: 13 } } } } };
+  // 0 のラインだけ濃く・太く（structuredClone は関数を複製できないので clone 後に付ける）
+  const zeroGrid = () => ({ color: ctx => ctx.tick.value === 0 ? "#1C2130" : "#E6E8EC", lineWidth: ctx => ctx.tick.value === 0 ? 2 : 1 });
+  // 0 より上を薄い赤、下を薄い青で塗り分け、0 のラインを常に描く
+  const zeroBand = {
+    id: "zeroBand",
+    beforeDraw(chart) {
+      const y = chart.scales.y; if (!y) return;
+      const { ctx, chartArea: a } = chart;
+      const y0 = Math.min(Math.max(y.getPixelForValue(0), a.top), a.bottom);
+      ctx.save();
+      ctx.fillStyle = "rgba(217,65,42,.07)";  ctx.fillRect(a.left, a.top, a.width, y0 - a.top);
+      ctx.fillStyle = "rgba(46,109,180,.07)"; ctx.fillRect(a.left, y0, a.width, a.bottom - y0);
+      ctx.restore();
+    },
+    beforeDatasetsDraw(chart) {
+      const y = chart.scales.y; if (!y) return;
+      const { ctx, chartArea: a } = chart;
+      const y0 = y.getPixelForValue(0);
+      if (y0 <= a.top || y0 >= a.bottom) return;
+      ctx.save(); ctx.strokeStyle = "#1C2130"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(a.left, y0); ctx.lineTo(a.right, y0); ctx.stroke(); ctx.restore();
+    }
+  };
 
   function renderTrend() {
     const title = $("#trendTitle"), kpi = $("#kpi");
@@ -431,10 +490,10 @@
       ]
     };
     const opts = structuredClone(baseOpts);
-    opts.scales.y = { position: "left", title: { display: true, text: "箱" }, grid: { color: "#E6E8EC" } };
+    opts.scales.y = { position: "left", title: { display: true, text: "箱" }, grid: zeroGrid() };
     opts.scales.y2 = { position: "right", beginAtZero: true, title: { display: true, text: "回" }, grid: { display: false } };
     if (trendChart) { trendChart.data = data; trendChart.options = opts; trendChart.update(); }
-    else trendChart = new Chart($("#trend"), { data, options: opts });
+    else trendChart = new Chart($("#trend"), { data, options: opts, plugins: [zeroBand] });
   }
 
   function renderDaily() {
@@ -446,19 +505,23 @@
       ? `${state.model} の推移 <span>この機種の1日あたりの平均箱数と、プラスで終わった台の割合（台移動しても機種名で集計）</span>`
       : `店全体の推移 <span>1日あたりの平均箱数と、プラスで終わった台の割合</span>`;
     const counts = ds.map(([, v]) => v.length);
+    const totals = ds.map(([, v]) => v.reduce((a, b) => a + b, 0));
     const data = {
       labels: ds.map(([d]) => d.slice(5).replace("-", "/")),
       datasets: [
-        { type: "line", label: "平均箱数", data: ds.map(([, v]) => v.reduce((a, b) => a + b) / v.length), borderColor: C.plus, backgroundColor: C.plus, pointRadius: 3, tension: .2, yAxisID: "y" },
+        { type: "line", label: "平均箱数", data: ds.map(([, v], i) => totals[i] / v.length), borderColor: C.plus, backgroundColor: C.plus, pointRadius: 3, tension: .2, yAxisID: "y" },
         { type: "line", label: "プラス台の割合(%)", data: ds.map(([, v]) => v.filter(x => x > 0).length / v.length * 100), borderColor: C.minus, backgroundColor: C.minus, pointRadius: 3, tension: .2, yAxisID: "y2", borderDash: [4, 3] },
       ]
     };
     const opts = structuredClone(baseOpts);
-    opts.scales.y = { position: "left", title: { display: true, text: "箱" }, grid: { color: "#E6E8EC" } };
+    opts.scales.y = { position: "left", title: { display: true, text: "箱" }, grid: zeroGrid() };
     opts.scales.y2 = { position: "right", min: 0, max: 100, title: { display: true, text: "%" }, grid: { display: false } };
-    opts.plugins.tooltip = { callbacks: { afterBody: items => `台数 ${counts[items[0].dataIndex]}台` } };
+    opts.plugins.tooltip = { callbacks: { afterBody: items => {
+      const i = items[0].dataIndex, t = totals[i];
+      return [`合計 ${t >= 0 ? "+" : ""}${t.toFixed(1)} 箱`, `台数 ${counts[i]}台`];
+    } } };
     if (dailyChart) { dailyChart.data = data; dailyChart.options = opts; dailyChart.update(); }
-    else dailyChart = new Chart($("#daily"), { data, options: opts });
+    else dailyChart = new Chart($("#daily"), { data, options: opts, plugins: [zeroBand] });
   }
 
   function renderLink() {
@@ -466,7 +529,7 @@
     a.hidden = !url; if (!url) return;
     a.href = url; a.title = `${state.store}のサイトを開く（別タブ）`; a.innerHTML = LINK_ICON;
   }
-  function render() { renderLink(); renderBoard(); renderTable(); renderTrend(); renderDaily(); }
+  function render() { renderLink(); renderBoard(); renderTable(); renderRank(); renderTrend(); renderDaily(); }
   if (months.length) await loadMore(); else { build(); refreshControls(); render(); }
 })();
 </script>
