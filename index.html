@@ -130,13 +130,39 @@
 <script>
 (function () {
   const ID = "sin", PW = "1";
+  const ADMIN_ID = "md", ADMIN_PW = "1";   // ← 自分だけの ID・パスワードに変える
+  const COUNTER = "https://api.counterapi.dev/v1/dedama-board-kotohayomonashi/";
   const gate = document.getElementById("gate");
-  if (sessionStorage.getItem("dedama_ok") === "1") { gate.remove(); return; }
+
+  // 訪問カウント。一般ログインは +1 して画面には出さない。管理者ログインは数を増やさず右上に表示
+  function countVisit() {
+    const t = new Date();
+    const ym = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`;
+    const ymd = `${ym}-${String(t.getDate()).padStart(2, "0")}`;
+    const admin = sessionStorage.getItem("dedama_admin") === "1";
+    if (!admin && sessionStorage.getItem("dedama_counted")) return;
+    sessionStorage.setItem("dedama_counted", "1");
+    const tail = admin ? "" : "/up";
+    Promise.all([fetch(COUNTER + "d-" + ymd + tail), fetch(COUNTER + "m-" + ym + tail)])
+      .then(rs => Promise.all(rs.map(r => r.json())))
+      .then(([d, m]) => {
+        if (!admin) return;
+        const el = document.createElement("span");
+        el.style.cssText = "margin-right:14px;font-family:var(--num);font-size:14px;font-weight:600;color:var(--plus)";
+        el.textContent = `今日 ${d.count} / 今月 ${m.count}`;
+        document.getElementById("visits").append(el);
+      }).catch(() => {});
+  }
+
+  function enter() { gate.remove(); document.documentElement.classList.remove("locked"); countVisit(); }
+
+  if (sessionStorage.getItem("dedama_ok") === "1") { enter(); return; }
   document.documentElement.classList.add("locked");
   function tryLogin() {
-    if (document.getElementById("gid").value === ID && document.getElementById("gpw").value === PW) {
-      sessionStorage.setItem("dedama_ok", "1"); gate.remove(); document.documentElement.classList.remove("locked");
-    } else { document.getElementById("gmsg").textContent = "IDかパスワードが違います"; document.getElementById("gpw").value = ""; }
+    const id = document.getElementById("gid").value, pw = document.getElementById("gpw").value;
+    if (id === ADMIN_ID && pw === ADMIN_PW) sessionStorage.setItem("dedama_admin", "1");
+    else if (!(id === ID && pw === PW)) { document.getElementById("gmsg").textContent = "IDかパスワードが違います"; document.getElementById("gpw").value = ""; return; }
+    sessionStorage.setItem("dedama_ok", "1"); enter();
   }
   document.getElementById("gbtn").onclick = tryLogin;
   gate.addEventListener("keydown", e => { if (e.key === "Enter") tryLogin(); });
@@ -144,7 +170,7 @@
 </script>
 <header>
   <h1>出玉ボード <small>台別成績（dedama.me より毎日24時取得）</small></h1>
-  <div class="updated" id="updated"></div>
+  <div class="updated"><span id="visits"></span><span id="updated"></span></div>
 </header>
 
 <div class="controls">
