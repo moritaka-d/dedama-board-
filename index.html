@@ -131,25 +131,21 @@
 (function () {
   const ID = "sin", PW = "1";
   const ADMIN_ID = "md", ADMIN_PW = "1";   // ← 自分だけの ID・パスワードに変える
-  const COUNTER = "https://api.counterapi.dev/v1/dedama-board-kotohayomonashi/";
+  const COUNTER = "https://dedama-counter.mori-t.workers.dev/";
   const gate = document.getElementById("gate");
 
   // 訪問カウント。一般ログインは +1 して画面には出さない。管理者ログインは数を増やさず右上に表示
   function countVisit() {
-    const t = new Date();
-    const ym = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}`;
-    const ymd = `${ym}-${String(t.getDate()).padStart(2, "0")}`;
     const admin = sessionStorage.getItem("dedama_admin") === "1";
     if (!admin && sessionStorage.getItem("dedama_counted")) return;
     sessionStorage.setItem("dedama_counted", "1");
-    const tail = admin ? "" : "/up";
-    Promise.all([fetch(COUNTER + "d-" + ymd + tail), fetch(COUNTER + "m-" + ym + tail)])
-      .then(rs => Promise.all(rs.map(r => r.json())))
-      .then(([d, m]) => {
+    fetch(COUNTER + (admin ? "" : "?hit=1"))
+      .then(r => r.json())
+      .then(d => {
         if (!admin) return;
         const el = document.createElement("span");
         el.style.cssText = "margin-right:14px;font-family:var(--num);font-size:14px;font-weight:600;color:var(--plus)";
-        el.textContent = `今日 ${d.count} / 今月 ${m.count}`;
+        el.textContent = `今日 ${d.today} / 今月 ${d.month}`;
         document.getElementById("visits").append(el);
       }).catch(() => {});
   }
