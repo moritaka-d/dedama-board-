@@ -136,6 +136,57 @@
     <div class="note">「差」= 31日平均 − 直近7日平均。大きいほど「普段は出しているのに最近絞られている」状態。31日平均が店全体の31日平均を下回る機種・台は、普段から出していないので除外しています。黄色が上位5機種 / 上位10台。この軸が当たる店かどうかは admin の的中率「反動」で確認できます。</div>
   </section>
 
+  <section id="goodSec" hidden>
+    <h2>好調日の傾向 <span id="goodNote"></span>
+      <label style="font-weight:400;color:var(--ink-2);font-size:13px;margin-left:auto">好調日の定義
+        <select id="goodDef">
+          <option value="above31">店全体の平均が31日平均を上回る</option>
+          <option value="plus">店全体の平均がプラス</option>
+          <option value="half">プラス台の割合が50%以上</option>
+        </select>
+      </label>
+    </h2>
+    <div class="cols">
+      <div class="panel">
+        <h2 style="margin-bottom:6px">曜日・日付 <span>好調日になりやすいのはいつか</span></h2>
+        <table id="dowTbl">
+          <thead><tr><th class="l">区分</th><th>日数</th><th>好調日</th><th>好調率</th><th>平均箱</th><th>プラス台率</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <h2 style="margin-bottom:6px">好調日の翌日 <span>続く店か、翌日しめる店か</span></h2>
+        <div class="kpi" id="nextKpi"></div>
+        <table id="nextTbl">
+          <thead><tr><th class="l">前日</th><th>日数</th><th>翌日が好調</th><th>翌日の平均箱</th><th>翌日のプラス台率</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="note" id="streakNote"></div>
+      </div>
+    </div>
+    <div class="cols" style="margin-top:28px">
+      <div class="panel">
+        <h2 style="margin-bottom:6px">好調日に出ていた機種 <span>店が出す日に使う機種</span></h2>
+        <div class="scroll" style="max-height:420px">
+          <table id="goodModelTbl">
+            <thead><tr><th class="l">機種</th><th>好調日の平均</th><th>プラス率</th><th>それ以外の日</th><th>上乗せ</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <h2 style="margin-bottom:6px">好調日に出ていた台 <span>上位20台</span></h2>
+        <div class="scroll" style="max-height:420px">
+          <table id="goodDaiTbl">
+            <thead><tr><th>台</th><th class="l">機種</th><th>好調日の平均</th><th>プラス率</th><th>それ以外の日</th><th>上乗せ</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="note">基準日までの全期間で集計。「上乗せ」= 好調日の平均 − それ以外の日の平均。大きいほど「店が出す日に集中して使われる機種・台」。好調日が5日以上たまってから見てください。</div>
+  </section>
+
   <section id="newSec" hidden>
     <h2>新台の傾向 <span id="newNote"></span></h2>
     <div class="panel">
@@ -253,7 +304,7 @@
   }
   if (!all.length) { $("#empty").textContent = "スロットのデータがありません。"; return; }
   $("#empty").hidden = true;
-  for (const id of ["recSec", "daiSec", "rebSec", "newSec"]) $("#" + id).hidden = false;
+  for (const id of ["recSec", "daiSec", "rebSec", "goodSec", "newSec"]) $("#" + id).hidden = false;
   if (isAdmin) $("#adminSec").hidden = false;
 
   // 店 → 日 → 行、 店 → 台 → 日順の履歴
@@ -388,6 +439,72 @@
     });
   }
 
+  // ---------- 好調日 ----------
+  function renderGood() {
+    const def = $("#goodDef").value, store = state.store;
+    const m = byStoreDay.get(store) || new Map();
+    const sdays = [...m.keys()].filter(d => d <= state.day).sort();
+    // 日ごとの店統計
+    const stat = new Map();
+    for (const d of sdays) { const b = m.get(d).map(r => r.box); stat.set(d, { avg: avg(b), plus: plusRate(b), rows: m.get(d) }); }
+    const isGood = d => { const st = stat.get(d);
+      if (def === "plus") return st.avg > 0;
+      if (def === "half") return st.plus >= .5;
+      const base = avg(windowRows(store, d, 31).map(r => r.box)); return st.avg > base; };
+    const good = new Set(sdays.filter(isGood));
+    $("#goodNote").textContent = `${sdays.length}日中 好調日 ${good.size}日（${sdays.length ? Math.round(good.size / sdays.length * 100) : 0}%）`;
+
+    // 曜日・日付
+    const lastDom = d => { const t = new Date(d + "T00:00:00"); return new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate(); };
+    const cats = [
+      ...["日", "月", "火", "水", "木", "金", "土"].map((n, i) => [n + "曜", d => new Date(d + "T00:00:00").getDay() === i]),
+      ["7のつく日", d => [7, 17, 27].includes(+d.slice(8))], ["ゾロ目", d => [11, 22].includes(+d.slice(8))],
+      ["1日", d => +d.slice(8) === 1], ["月末", d => +d.slice(8) === lastDom(d)],
+    ];
+    const dt = $("#dowTbl tbody"); dt.innerHTML = "";
+    const line = (name, ds) => { const g = ds.filter(d => good.has(d)).length, a = avg(ds.map(d => stat.get(d).avg)), p = avg(ds.map(d => stat.get(d).plus));
+      const tr = document.createElement("tr"); if (ds.length && g / ds.length > good.size / sdays.length) tr.className = "rec";
+      tr.innerHTML = `<td class="l">${name}</td><td class="n">${ds.length}</td><td class="n">${g}</td><td class="n">${ds.length ? pct(g / ds.length) : "–"}</td><td class="n ${cls(a)}">${fmt(a)}</td><td class="dim">${pct(p)}</td>`; dt.append(tr); };
+    line("全日", sdays);
+    for (const [name, f] of cats) { const ds = sdays.filter(f); if (ds.length) line(name, ds); }
+
+    // 翌日
+    const pairs = []; for (let i = 1; i < sdays.length; i++) if (daysBetween(sdays[i - 1], sdays[i]) === 1) pairs.push([sdays[i - 1], sdays[i]]);
+    const nt = $("#nextTbl tbody"); nt.innerHTML = "";
+    const nline = (name, ps) => { const g = ps.filter(([, n]) => good.has(n)).length, a = avg(ps.map(([, n]) => stat.get(n).avg)), p = avg(ps.map(([, n]) => stat.get(n).plus));
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td class="l">${name}</td><td class="n">${ps.length}</td><td class="n">${ps.length ? pct(g / ps.length) : "–"}</td><td class="n ${cls(a)}">${fmt(a)}</td><td class="dim">${pct(p)}</td>`; nt.append(tr); };
+    const gp = pairs.filter(([d]) => good.has(d)), bp = pairs.filter(([d]) => !good.has(d));
+    nline("好調日", gp); nline("それ以外", bp);
+    const baseRate = sdays.length ? good.size / sdays.length : 0, afterGood = gp.length ? gp.filter(([, n]) => good.has(n)).length / gp.length : null;
+    $("#nextKpi").innerHTML = afterGood == null ? "" :
+      `<div><b style="color:${afterGood > baseRate ? "var(--plus)" : "var(--minus)"}">${pct(afterGood)}</b>好調日の翌日も好調</div><div><b>${pct(baseRate)}</b>全日の好調率（基準）</div>`;
+    // 連続好調の分布
+    const runs = []; let run = 0;
+    for (let i = 0; i < sdays.length; i++) { if (good.has(sdays[i]) && (i === 0 || daysBetween(sdays[i - 1], sdays[i]) === 1 || run === 0)) run++; else { if (run) runs.push(run); run = good.has(sdays[i]) ? 1 : 0; } }
+    if (run) runs.push(run);
+    const dist = [1, 2, 3].map(n => `${n}日${n === 3 ? "以上" : ""}: ${runs.filter(r => n === 3 ? r >= 3 : r === n).length}回`).join("　");
+    $("#streakNote").textContent = runs.length ? `好調が続いた長さ　${dist}（最長 ${Math.max(...runs)}日）` : "";
+
+    // 好調日に出ていた機種・台
+    const gRows = sdays.filter(d => good.has(d)).flatMap(d => stat.get(d).rows), oRows = sdays.filter(d => !good.has(d)).flatMap(d => stat.get(d).rows);
+    const group = (rows, key) => { const g = new Map(); for (const r of rows) { const k = key(r); if (!g.has(k)) g.set(k, []); g.get(k).push(r); } return g; };
+    const gm = group(gRows, r => r.model), om = group(oRows, r => r.model);
+    const mt = $("#goodModelTbl tbody"); mt.innerHTML = "";
+    [...gm].map(([model, rs]) => { const b = rs.map(r => r.box), o = avg((om.get(model) || []).map(r => r.box)); const a = avg(b);
+      return { model, a, p: plusRate(b), o, lift: o == null ? null : a - o, n: b.length }; })
+      .filter(x => x.n >= 3).sort((x, y) => y.a - x.a).forEach((x, i) => {
+        const tr = document.createElement("tr"); if (i < TOP_MODELS) tr.className = "rec";
+        tr.innerHTML = `<td class="l" title="${x.model}">${x.model}</td><td class="n ${cls(x.a)}">${fmt(x.a)}</td><td class="dim">${pct(x.p)}</td><td class="n ${cls(x.o)}">${fmt(x.o)}</td><td class="n ${cls(x.lift)}">${fmt(x.lift)}</td>`; mt.append(tr); });
+    const gd = group(gRows, r => r.dai + "|" + r.model), od = group(oRows, r => r.dai + "|" + r.model);
+    const dtb = $("#goodDaiTbl tbody"); dtb.innerHTML = "";
+    [...gd].map(([k, rs]) => { const b = rs.map(r => r.box), o = avg((od.get(k) || []).map(r => r.box)); const a = avg(b);
+      return { dai: rs[0].dai, model: rs[0].model, a, p: plusRate(b), o, lift: o == null ? null : a - o, n: b.length }; })
+      .filter(x => x.n >= 2).sort((x, y) => y.a - x.a).slice(0, 20).forEach((x, i) => {
+        const tr = document.createElement("tr"); if (i < TOP_DAIS) tr.className = "rec";
+        tr.innerHTML = `<td class="n">${x.dai}</td><td class="l" title="${x.model}">${x.model}</td><td class="n ${cls(x.a)}">${fmt(x.a)}</td><td class="dim">${pct(x.p)}</td><td class="n ${cls(x.o)}">${fmt(x.o)}</td><td class="n ${cls(x.lift)}">${fmt(x.lift)}</td>`; dtb.append(tr); });
+  }
+
   function renderNew() {
     const first = new Map();   // 機種 → 初出日
     for (const r of all) if (r.store === state.store) { if (!first.has(r.model) || r.day < first.get(r.model)) first.set(r.model, r.day); }
@@ -459,7 +576,8 @@
   for (const d of [...days].reverse()) daySel.append(new Option(fmtDay(d), d));
   daySel.value = state.day; daySel.onchange = () => { state.day = daySel.value; render(); };
 
-  function render() { renderRec(); renderReb(); renderNew(); renderHit(); }
+  $("#goodDef").onchange = renderGood;
+  function render() { renderRec(); renderReb(); renderGood(); renderNew(); renderHit(); }
   render();
 })();
 </script>
