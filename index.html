@@ -130,7 +130,7 @@
 <script>
 (function () {
   const ID = "sin", PW = "1";
-  const ADMIN_ID = "md", ADMIN_PW = "1";   // ← 自分だけの ID・パスワードに変える
+  const ADMIN_ID = "md", ADMIN_PW = "1";
   const COUNTER = "https://dedama-counter.mori-t.workers.dev/";
   const gate = document.getElementById("gate");
 
@@ -164,10 +164,14 @@
   gate.addEventListener("keydown", e => { if (e.key === "Enter") tryLogin(); });
 
   // 隠し導線: タイトル「出玉ボード」を3秒以内に5回タップで傾向ページへ
-  let taps = [];
-  document.querySelector("header h1").addEventListener("click", () => {
-    const now = Date.now(); taps = taps.filter(t => now - t < 3000); taps.push(now);
-    if (taps.length >= 5) { taps = []; location.href = "trend.html"; }
+  document.addEventListener("DOMContentLoaded", () => {
+    const h1 = document.querySelector("header h1");
+    h1.style.touchAction = "manipulation";   // スマホのダブルタップ拡大を抑止
+    let taps = [];
+    h1.addEventListener("click", () => {
+      const now = Date.now(); taps = taps.filter(t => now - t < 3000); taps.push(now);
+      if (taps.length >= 5) { taps = []; location.href = "trend.html"; }
+    });
   });
 })();
 </script>
