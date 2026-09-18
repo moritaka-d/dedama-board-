@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>傾向</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<script>
+  // ログイン済み（index.html のゲートを通過したタブ）以外は表に戻す
+  if (sessionStorage.getItem("dedama_ok") !== "1") location.replace("index.html");
+</script>
+<style>
+  :root {
+    --paper: #EDEFF2; --panel: #FFFFFF; --ink: #1C2130; --ink-2: #5B6272; --line: #D3D7DE;
+    --plus: #D9412A; --minus: #2E6DB4; --zero: #C9CDD4; --gold: #F5B400;
+    --num: "Barlow Condensed", "Noto Sans JP", sans-serif; --body: "Noto Sans JP", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--body); font-size: 14px; line-height: 1.6; }
+  a { color: inherit; }
+  button, select { font: inherit; color: inherit; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 24px; padding: 20px 28px 12px; border-bottom: 2px solid var(--ink); }
+  header h1 { margin: 0; font-family: var(--num); font-weight: 700; font-size: 34px; letter-spacing: .02em; line-height: 1; }
+  header h1 small { font-family: var(--body); font-size: 13px; font-weight: 400; color: var(--ink-2); margin-left: 12px; }
+  header a.back { margin-left: auto; color: var(--ink-2); font-size: 13px; text-decoration: none; }
+  header a.back:hover { color: var(--ink); }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 22px; padding: 12px 28px; align-items: center; }
+  .seg { display: inline-flex; border: 1.5px solid var(--ink); border-radius: 4px; overflow: hidden; }
+  .seg button { border: 0; background: transparent; padding: 5px 14px; cursor: pointer; }
+  .seg button + button { border-left: 1.5px solid var(--ink); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+  .controls label { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); }
+  select { background: var(--panel); border: 1.5px solid var(--line); border-radius: 4px; padding: 5px 8px; }
+  main { padding: 0 28px 48px; max-width: 1480px; margin: 0 auto; }
+  section { margin-top: 28px; }
+  h2 { font-size: 15px; font-weight: 700; margin: 0 0 10px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  h2 span { font-weight: 400; color: var(--ink-2); font-size: 13px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  @media (max-width: 1000px) { .cols { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-weight: 500; color: var(--ink-2); font-size: 12px; }
+  th.l, td.l { text-align: left; }
+  td.l { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+  td.n { font-family: var(--num); font-size: 16px; font-weight: 600; }
+  td.pos { color: var(--plus); } td.neg { color: var(--minus); }
+  td.dim { color: var(--ink-2); font-size: 13px; }
+  tr.rec td { background: #FFF8E1; }
+  tr.rec td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
+  .scroll { max-height: 560px; overflow: auto; }
+  .note { color: var(--ink-2); font-size: 12px; margin-top: 8px; }
+  .kpi { display: flex; gap: 28px; margin-bottom: 8px; flex-wrap: wrap; }
+  .kpi div b { display: block; font-family: var(--num); font-size: 30px; font-weight: 700; line-height: 1.1; }
+  .kpi div { color: var(--ink-2); font-size: 12px; }
+  .empty { padding: 60px 20px; text-align: center; color: var(--ink-2); }
+  .badge { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 3px; background: var(--ink); color: #fff; margin-left: 6px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<header>
+  <h1>傾向 <small>スロット限定・店の出し方を読むページ</small></h1>
+  <a class="back" href="index.html">← ボードに戻る</a>
+</header>
+
+<div class="controls">
+  <div class="seg" id="storeSeg"></div>
+  <label>基準日 <select id="daySel"></select></label>
+  <span style="color:var(--ink-2);font-size:12px">基準日までのデータで「翌日のおすすめ」を出します。過去の日を選ぶと、その時点で何を推していたかが見られます。</span>
+</div>
+
+<main>
+  <div class="empty" id="empty">読み込み中…</div>
+
+  <section id="recSec" hidden>
+    <h2>おすすめ機種 <span id="recModelNote"></span></h2>
+    <div class="panel">
+      <div class="scroll">
+        <table id="modelTbl">
+          <thead><tr>
+            <th class="l">機種</th><th>台数</th>
+            <th>7日平均</th><th>プラス率</th>
+            <th>14日平均</th><th>プラス率</th>
+            <th>31日平均</th><th>プラス率</th>
+            <th>総合</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="note">総合 = 7日平均×0.5 + 14日平均×0.3 + 31日平均×0.2（データがない期間は除いて再計算）。黄色が上位5機種。平均は1台1日あたりの箱数。</div>
+    </div>
+  </section>
+
+  <section id="daiSec" hidden>
+    <h2>おすすめ台 <span id="recDaiNote"></span></h2>
+    <div class="panel">
+      <div class="scroll">
+        <table id="daiTbl">
+          <thead><tr>
+            <th>台</th><th class="l">機種</th>
+            <th>7日合計</th><th>14日合計</th><th>31日合計</th>
+            <th>プラス日/日数</th><th>連続プラス</th><th>総合</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="note">総合 = 各期間の1日平均を 0.5 / 0.3 / 0.2 で加重。現在の機種になってからのデータだけを使い、機種が変わる前の成績は含めません。黄色が上位10台。</div>
+    </div>
+  </section>
+
+  <section id="newSec" hidden>
+    <h2>新台の傾向 <span id="newNote"></span></h2>
+    <div class="panel">
+      <div class="scroll">
+        <table id="newTbl">
+          <thead><tr>
+            <th>導入日</th><th class="l">機種</th><th>台数</th><th>経過</th>
+            <th>1〜7日目</th><th>8〜14日目</th><th>15日目〜</th><th>直近7日</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="note">データ期間の途中から現れた機種を新台とみなしています。値は1台1日あたりの平均箱数（プラス率）。導入直後に出して以降しぼむのか、据え置きで出し続けるのかが見えます。</div>
+    </div>
+  </section>
+
+  <section id="adminSec" hidden>
+    <h2>的中率 <span class="badge">admin</span> <span id="hitNote"></span></h2>
+    <div class="cols">
+      <div class="panel">
+        <div class="kpi" id="hitKpi"></div>
+        <table id="hitTbl">
+          <thead><tr>
+            <th class="l">方式</th><th class="l">対象</th><th>件数</th><th>翌日プラス率</th><th>店平均超え率</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="note">読み込んでいる全期間について、「前日までのデータで出したおすすめ」が翌日どうだったかを機械的に検証した結果です。「全台」の行が基準で、これを上回っていればおすすめに意味があります。店平均超え率は 50% が基準です。</div>
+      </div>
+      <div class="panel">
+        <h2 style="margin-bottom:6px">日別（総合・おすすめ台TOP10） <span>直近30日</span></h2>
+        <div class="scroll" style="max-height:420px">
+          <table id="hitDayTbl">
+            <thead><tr><th class="l">日付</th><th>プラス</th><th>店平均超え</th><th>店プラス率</th><th>おすすめ台の平均</th><th>店平均</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+(async function () {
+  const $ = s => document.querySelector(s);
+  const KIND = "スロット";
+  const WINDOWS = [7, 14, 31], WEIGHTS = { 7: .5, 14: .3, 31: .2 };
+  const TOP_MODELS = 5, TOP_DAIS = 10;
+  const isAdmin = sessionStorage.getItem("dedama_admin") === "1";
+  const state = { store: null, day: null };
+
+  // ---------- CSV / 日付（index.html と同じ） ----------
+  function parseCSV(text) {
+    text = text.replace(/^\uFEFF/, "");
+    const rows = []; let row = [], cur = "", q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) { if (c === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
+      else if (c === '"') q = true;
+      else if (c === ",") { row.push(cur); cur = ""; }
+      else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cur); rows.push(row); row = []; cur = ""; }
+      else cur += c;
+    }
+    if (cur.length || row.length) { row.push(cur); rows.push(row); }
+    const head = rows.shift();
+    const noStore = !head.includes("store");
+    return rows.filter(r => r.length >= 2).map(r => {
+      if (noStore && r.length === head.length + 1) { const o = Object.fromEntries(head.map((h, i) => [h, r[i + 1] ?? ""])); o.store = r[0]; return o; }
+      return Object.fromEntries(head.map((h, i) => [h, r[i] ?? ""]));
+    });
+  }
+  const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00"); d.setDate(d.getDate() + n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const fmtDay = iso => { const d = new Date(iso + "T00:00:00"); return `${d.getMonth() + 1}/${d.getDate()}（${"日月火水木金土"[d.getDay()]}）`; };
+  const md = iso => iso.slice(5).replace("-", "/");
+  const daysBetween = (a, b) => Math.round((new Date(b + "T00:00:00") - new Date(a + "T00:00:00")) / 86400000);
+
+  async function fetchText(path) { const res = await fetch(path, { cache: "no-store" }); if (!res.ok) throw new Error(res.status); return res.text(); }
+
+  // ---------- 読み込み: 直近3か月 ----------
+  let raw = [];
+  try {
+    const months = JSON.parse(await fetchText("data/index.json")).months.slice(0, 3);
+    for (const m of months) { try { raw = raw.concat(parseCSV(await fetchText(`data/${m}.csv`))); } catch (e) { console.warn(m, e); } }
+  } catch (e) {
+    try { raw = parseCSV(await fetchText("data/all.csv")); } catch (e2) { $("#empty").textContent = "データが読み込めません。"; return; }
+  }
+
+  // ---------- 整形（index.html の build と同じロジック、スロットだけ残す） ----------
+  let all = [], days = [];
+  {
+    const recs = new Map();
+    raw = raw.filter(r => /^\d{4}-\d{2}-\d{2}$/.test(r.fetch_date) && r.kind === KIND);
+    for (const r of raw) { r.base = r.today_date || r.fetch_date; r.store = r.store || "東名"; }
+    const emptyToday = new Set();
+    { const m = new Map();
+      for (const r of raw) { const k = r.store + "|" + r.base; if (!m.has(k)) m.set(k, true); if (parseFloat(r.box_d0) !== 0 || parseInt(r.hit_d0, 10) !== 0) m.set(k, false); }
+      for (const [k, v] of m) if (v) emptyToday.add(k); }
+    const modelOnDay = new Map();
+    for (const r of raw) modelOnDay.set(`${r.store}|${r.dai}|${r.base}`, r.model);
+    for (const r of raw) {
+      for (const [suffix, off] of [["d2", -2], ["d1", -1], ["d0", 0]]) {
+        if (off === 0 && emptyToday.has(r.store + "|" + r.base)) continue;
+        const day = addDays(r.base, off);
+        const box = parseFloat(r["box_" + suffix]), hit = parseInt(r["hit_" + suffix], 10);
+        if (isNaN(box)) continue;
+        const key = `${r.store}|${r.dai}|${day}`;
+        const rank = off < 0 ? 3e6 + off : 1e6 + Number(r.fetch_date.replace(/-/g, "").slice(2));
+        const prev = recs.get(key);
+        if (!prev || rank > prev.rank) recs.set(key, { rank, store: r.store, dai: r.dai, day, model: modelOnDay.get(key) || r.model, box, hit: isNaN(hit) ? null : hit });
+      }
+    }
+    all = [...recs.values()];
+    days = [...new Set(all.map(r => r.day))].sort();
+  }
+  if (!all.length) { $("#empty").textContent = "スロットのデータがありません。"; return; }
+  $("#empty").hidden = true;
+  for (const id of ["recSec", "daiSec", "newSec"]) $("#" + id).hidden = false;
+  if (isAdmin) $("#adminSec").hidden = false;
+
+  // 店 → 日 → 行、 店 → 台 → 日順の履歴
+  const byStoreDay = new Map(), hist = new Map();
+  for (const r of all) {
+    if (!byStoreDay.has(r.store)) byStoreDay.set(r.store, new Map());
+    const m = byStoreDay.get(r.store); if (!m.has(r.day)) m.set(r.day, []); m.get(r.day).push(r);
+    const k = r.store + "|" + r.dai; if (!hist.has(k)) hist.set(k, []); hist.get(k).push(r);
+  }
+  for (const rs of hist.values()) rs.sort((a, b) => a.day.localeCompare(b.day));
+
+  // ---------- 集計 ----------
+  // 基準日 endDay から W 日さかのぼった範囲の行（store のみ）
+  function windowRows(store, endDay, W) {
+    const start = addDays(endDay, -(W - 1)), m = byStoreDay.get(store) || new Map(), out = [];
+    for (const [d, rs] of m) if (d >= start && d <= endDay) out.push(...rs);
+    return out;
+  }
+  const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+  const plusRate = a => a.length ? a.filter(v => v > 0).length / a.length : null;
+
+  // 機種ごとの期間統計。avg = 1台1日あたりの箱数
+  function modelStats(store, endDay, W) {
+    const g = new Map();
+    for (const r of windowRows(store, endDay, W)) { if (!g.has(r.model)) g.set(r.model, []); g.get(r.model).push(r.box); }
+    const out = new Map();
+    for (const [model, boxes] of g) out.set(model, { n: boxes.length, avg: avg(boxes), plus: plusRate(boxes) });
+    return out;
+  }
+  // 台ごとの期間統計。基準日時点の機種と同じ行だけ使う
+  function daiStats(store, endDay, W) {
+    const start = addDays(endDay, -(W - 1)), out = new Map();
+    for (const [k, rs] of hist) {
+      if (!k.startsWith(store + "|")) continue;
+      const cur = [...rs].reverse().find(r => r.day <= endDay); if (!cur) continue;
+      if (daysBetween(cur.day, endDay) > 2) continue;                    // 基準日近辺にいない台は撤去扱い
+      const rows = rs.filter(r => r.day >= start && r.day <= endDay && r.model === cur.model);
+      if (!rows.length) continue;
+      const boxes = rows.map(r => r.box);
+      let streak = 0; for (let i = rows.length - 1; i >= 0 && rows[i].box > 0; i--) streak++;
+      out.set(cur.dai, { dai: cur.dai, model: cur.model, sum: boxes.reduce((a, b) => a + b, 0), days: rows.length, plusDays: boxes.filter(v => v > 0).length, streak, perDay: avg(boxes) });
+    }
+    return out;
+  }
+  // 重み付き総合。存在する期間だけで再正規化
+  function combine(vals) {
+    let s = 0, w = 0; for (const W of WINDOWS) if (vals[W] != null) { s += vals[W] * WEIGHTS[W]; w += WEIGHTS[W]; }
+    return w ? s / w : null;
+  }
+  // おすすめを出す。method: 7 / 14 / 31 / "total"
+  function recommend(store, endDay, method) {
+    const ms = {}, ds = {};
+    for (const W of WINDOWS) { ms[W] = modelStats(store, endDay, W); ds[W] = daiStats(store, endDay, W); }
+    const modelNames = new Set(); for (const W of WINDOWS) for (const k of ms[W].keys()) modelNames.add(k);
+    const models = [...modelNames].map(model => {
+      const v = {}; for (const W of WINDOWS) v[W] = ms[W].get(model)?.avg ?? null;
+      const score = method === "total" ? combine(v) : v[method];
+      const n = ms[31].get(model)?.n ?? 0;
+      return { model, stats: ms, v, score, n, dais: new Set(windowRows(store, endDay, 1).filter(r => r.model === model).map(r => r.dai)).size };
+    }).filter(m => m.score != null && m.n >= 3 && m.dais > 0).sort((a, b) => b.score - a.score);
+    const daiNames = new Set(); for (const W of WINDOWS) for (const k of ds[W].keys()) daiNames.add(k);
+    const dais = [...daiNames].map(dai => {
+      const v = {}; for (const W of WINDOWS) v[W] = ds[W].get(dai)?.perDay ?? null;
+      const s31 = ds[31].get(dai);
+      const score = method === "total" ? combine(v) : v[method];
+      return { dai, model: s31?.model, stats: ds, v, score, streak: s31?.streak ?? 0, days: s31?.days ?? 0, plusDays: s31?.plusDays ?? 0 };
+    }).filter(d => d.score != null && d.days >= 3).sort((a, b) => b.score - a.score || b.streak - a.streak);
+    return { models, dais };
+  }
+
+  // ---------- 描画 ----------
+  const fmt = (v, d = 2) => v == null ? "–" : (v > 0 ? "+" : "") + v.toFixed(d);
+  const pct = v => v == null ? "–" : Math.round(v * 100) + "%";
+  const cls = v => v == null ? "" : v > 0 ? "pos" : v < 0 ? "neg" : "";
+
+  function renderRec() {
+    const { models, dais } = recommend(state.store, state.day, "total");
+    const next = fmtDay(addDays(state.day, 1));
+    $("#recModelNote").textContent = `${fmtDay(state.day)} までのデータ → ${next} 向け`;
+    $("#recDaiNote").textContent = `${fmtDay(state.day)} までのデータ → ${next} 向け`;
+    const mt = $("#modelTbl tbody"); mt.innerHTML = "";
+    models.forEach((m, i) => {
+      const tr = document.createElement("tr"); if (i < TOP_MODELS) tr.className = "rec";
+      const s = W => m.stats[W].get(m.model);
+      tr.innerHTML = `<td class="l" title="${m.model}">${m.model}</td><td class="n">${m.dais}</td>` +
+        WINDOWS.map(W => `<td class="n ${cls(s(W)?.avg)}">${fmt(s(W)?.avg)}</td><td class="dim">${pct(s(W)?.plus)}</td>`).join("") +
+        `<td class="n ${cls(m.score)}">${fmt(m.score)}</td>`;
+      mt.append(tr);
+    });
+    const dt = $("#daiTbl tbody"); dt.innerHTML = "";
+    dais.slice(0, 40).forEach((d, i) => {
+      const tr = document.createElement("tr"); if (i < TOP_DAIS) tr.className = "rec";
+      const s = W => d.stats[W].get(d.dai);
+      tr.innerHTML = `<td class="n">${d.dai}</td><td class="l" title="${d.model}">${d.model}</td>` +
+        WINDOWS.map(W => `<td class="n ${cls(s(W)?.sum)}">${fmt(s(W)?.sum, 1)}</td>`).join("") +
+        `<td class="dim">${d.plusDays}/${d.days}</td><td class="n ${d.streak >= 2 ? "pos" : ""}">${d.streak}</td><td class="n ${cls(d.score)}">${fmt(d.score)}</td>`;
+      dt.append(tr);
+    });
+  }
+
+  function renderNew() {
+    const first = new Map();   // 機種 → 初出日
+    for (const r of all) if (r.store === state.store) { if (!first.has(r.model) || r.day < first.get(r.model)) first.set(r.model, r.day); }
+    const newModels = [...first].filter(([, d]) => d > days[0] && d <= state.day).sort((a, b) => b[1].localeCompare(a[1]));
+    $("#newNote").textContent = newModels.length ? `${days[0].slice(5).replace("-", "/")} 以降に入った機種 ${newModels.length}` : "データ期間内に新台なし";
+    const tb = $("#newTbl tbody"); tb.innerHTML = "";
+    const cell = boxes => boxes.length ? `<td class="n ${cls(avg(boxes))}">${fmt(avg(boxes))} <span class="dim" style="font-size:11px;font-weight:400">${pct(plusRate(boxes))}</span></td>` : `<td class="dim">–</td>`;
+    for (const [model, d0] of newModels) {
+      const rows = all.filter(r => r.store === state.store && r.model === model && r.day <= state.day);
+      const age = r => daysBetween(d0, r.day) + 1;
+      const w1 = rows.filter(r => age(r) <= 7).map(r => r.box), w2 = rows.filter(r => age(r) > 7 && age(r) <= 14).map(r => r.box), w3 = rows.filter(r => age(r) > 14).map(r => r.box);
+      const last7 = rows.filter(r => r.day > addDays(state.day, -7)).map(r => r.box);
+      const dais = new Set(rows.filter(r => r.day === state.day).map(r => r.dai)).size || new Set(rows.map(r => r.dai)).size;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td class="dim">${md(d0)}</td><td class="l" title="${model}">${model}</td><td class="n">${dais}</td><td class="dim">${daysBetween(d0, state.day) + 1}日目</td>` + cell(w1) + cell(w2) + cell(w3) + cell(last7);
+      tb.append(tr);
+    }
+  }
+
+  // 過去の各日について「前日までのデータで出したおすすめ」を翌日の実績で採点
+  function renderHit() {
+    if (!isAdmin) return;
+    const store = state.store, sdays = [...(byStoreDay.get(store) || new Map()).keys()].sort();
+    const methods = [[7, "7日"], [14, "14日"], [31, "31日"], ["total", "総合"]];
+    const acc = {}; for (const [m] of methods) acc[m] = { model: { n: 0, plus: 0, above: 0 }, dai: { n: 0, plus: 0, above: 0 } };
+    const base = { n: 0, plus: 0, above: 0 }, daily = [];
+    for (let i = 1; i < sdays.length; i++) {
+      const prev = sdays[i - 1], day = sdays[i];
+      if (daysBetween(prev, day) !== 1 || daysBetween(sdays[0], prev) < 6) continue;   // 7日分そろってから
+      const rows = byStoreDay.get(store).get(day), storeAvg = avg(rows.map(r => r.box));
+      const byDai = new Map(rows.map(r => [r.dai, r])), byModel = new Map();
+      for (const r of rows) { if (!byModel.has(r.model)) byModel.set(r.model, []); byModel.get(r.model).push(r.box); }
+      base.n += rows.length; base.plus += rows.filter(r => r.box > 0).length; base.above += rows.filter(r => r.box > storeAvg).length;
+      for (const [m] of methods) {
+        const { models, dais } = recommend(store, prev, m);
+        for (const rm of models.slice(0, TOP_MODELS)) { const b = byModel.get(rm.model); if (!b) continue; const a = avg(b); acc[m].model.n++; if (a > 0) acc[m].model.plus++; if (a > storeAvg) acc[m].model.above++; }
+        let dn = 0, dp = 0, da = 0, sum = 0;
+        for (const rd of dais.slice(0, TOP_DAIS)) { const r = byDai.get(rd.dai); if (!r) continue; dn++; sum += r.box; if (r.box > 0) dp++; if (r.box > storeAvg) da++; }
+        acc[m].dai.n += dn; acc[m].dai.plus += dp; acc[m].dai.above += da;
+        if (m === "total") daily.push({ day, dn, dp, da, storePlus: plusRate(rows.map(r => r.box)), recAvg: dn ? sum / dn : null, storeAvg });
+      }
+    }
+    $("#hitNote").textContent = daily.length ? `${md(daily[0].day)}〜${md(daily.at(-1).day)} の ${daily.length}日分で検証` : "検証できる日数がまだありません（8日分以上必要）";
+    const t = acc.total.dai, bp = base.n ? base.plus / base.n : 0;
+    $("#hitKpi").innerHTML = t.n ? `<div><b style="color:${t.plus / t.n > bp ? "var(--plus)" : "var(--minus)"}">${pct(t.plus / t.n)}</b>総合おすすめ台の翌日プラス率</div>` +
+      `<div><b>${pct(bp)}</b>全台の翌日プラス率（基準）</div><div><b>${pct(t.above / t.n)}</b>店平均超え率（基準 50%）</div>` : "";
+    const tb = $("#hitTbl tbody"); tb.innerHTML = "";
+    const row = (name, target, s, hl) => { const tr = document.createElement("tr"); if (hl) tr.className = "rec";
+      tr.innerHTML = `<td class="l">${name}</td><td class="l">${target}</td><td class="n">${s.n}</td><td class="n ${s.n && s.plus / s.n > bp ? "pos" : ""}">${s.n ? pct(s.plus / s.n) : "–"}</td><td class="n ${s.n && s.above / s.n > .5 ? "pos" : ""}">${s.n ? pct(s.above / s.n) : "–"}</td>`; tb.append(tr); };
+    row("全台（基準）", "–", base);
+    for (const [m, name] of methods) { row(name, `機種TOP${TOP_MODELS}`, acc[m].model, m === "total"); row(name, `台TOP${TOP_DAIS}`, acc[m].dai, m === "total"); }
+    const dt = $("#hitDayTbl tbody"); dt.innerHTML = "";
+    for (const d of daily.slice(-30).reverse()) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td class="l">${fmtDay(d.day)}</td><td class="n ${d.dn && d.dp / d.dn > d.storePlus ? "pos" : ""}">${d.dp}/${d.dn}</td><td class="n ${d.dn && d.da / d.dn > .5 ? "pos" : ""}">${d.da}/${d.dn}</td>` +
+        `<td class="dim">${pct(d.storePlus)}</td><td class="n ${cls(d.recAvg)}">${fmt(d.recAvg)}</td><td class="dim">${fmt(d.storeAvg)}</td>`;
+      dt.append(tr);
+    }
+  }
+
+  // ---------- コントロール ----------
+  const stores = [...byStoreDay.keys()];
+  state.store = stores[0]; state.day = days.at(-1);
+  $("#storeSeg").innerHTML = stores.map(st => `<button aria-pressed="${st === state.store}" data-v="${st}">${st}</button>`).join("");
+  $("#storeSeg").querySelectorAll("button").forEach(b => b.onclick = () => {
+    $("#storeSeg").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); state.store = b.dataset.v; render();
+  });
+  const daySel = $("#daySel");
+  for (const d of [...days].reverse()) daySel.append(new Option(fmtDay(d), d));
+  daySel.value = state.day; daySel.onchange = () => { state.day = daySel.value; render(); };
+
+  function render() { renderRec(); renderNew(); renderHit(); }
+  render();
+})();
+</script>
+</body>
+</html>
