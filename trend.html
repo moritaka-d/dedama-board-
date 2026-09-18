@@ -62,7 +62,7 @@
 </head>
 <body>
 <header>
-  <h1>傾向 <small>スロット限定・店の出し方を読むページ</small></h1>
+  <h1>傾向 <small>スロット限定</small></h1>
   <a class="back" href="index.html">← ボードに戻る</a>
 </header>
 
@@ -109,6 +109,31 @@
       </div>
       <div class="note">総合 = 各期間の1日平均を 0.5 / 0.3 / 0.2 で加重。現在の機種になってからのデータだけを使い、機種が変わる前の成績は含めません。黄色が上位10台。</div>
     </div>
+  </section>
+
+  <section id="rebSec" hidden>
+    <h2>そろそろ来そう <span id="rebNote"></span></h2>
+    <div class="cols">
+      <div class="panel">
+        <h2 style="margin-bottom:6px">機種 <span>普段の水準より直近が落ちている順</span></h2>
+        <div class="scroll" style="max-height:420px">
+          <table id="rebModelTbl">
+            <thead><tr><th class="l">機種</th><th>台数</th><th>31日平均</th><th>直近7日</th><th>差</th><th>連続マイナス</th><th>最後のプラス</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <h2 style="margin-bottom:6px">台 <span>普段の水準より直近が落ちている順</span></h2>
+        <div class="scroll" style="max-height:420px">
+          <table id="rebDaiTbl">
+            <thead><tr><th>台</th><th class="l">機種</th><th>31日平均</th><th>直近7日</th><th>差</th><th>連続マイナス</th><th>最後のプラス</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="note">「差」= 31日平均 − 直近7日平均。大きいほど「普段は出しているのに最近絞られている」状態。31日平均が店全体の31日平均を下回る機種・台は、普段から出していないので除外しています。黄色が上位5機種 / 上位10台。この軸が当たる店かどうかは admin の的中率「反動」で確認できます。</div>
   </section>
 
   <section id="newSec" hidden>
@@ -228,7 +253,7 @@
   }
   if (!all.length) { $("#empty").textContent = "スロットのデータがありません。"; return; }
   $("#empty").hidden = true;
-  for (const id of ["recSec", "daiSec", "newSec"]) $("#" + id).hidden = false;
+  for (const id of ["recSec", "daiSec", "rebSec", "newSec"]) $("#" + id).hidden = false;
   if (isAdmin) $("#adminSec").hidden = false;
 
   // 店 → 日 → 行、 店 → 台 → 日順の履歴
@@ -282,10 +307,12 @@
   function recommend(store, endDay, method) {
     const ms = {}, ds = {};
     for (const W of WINDOWS) { ms[W] = modelStats(store, endDay, W); ds[W] = daiStats(store, endDay, W); }
+    const storeAvg31 = avg(windowRows(store, endDay, 31).map(r => r.box)) ?? 0;
+    const scoreOf = v => method === "total" ? combine(v) : method === "rebound" ? (v[31] != null && v[7] != null && v[31] >= storeAvg31 ? v[31] - v[7] : null) : v[method];
     const modelNames = new Set(); for (const W of WINDOWS) for (const k of ms[W].keys()) modelNames.add(k);
     const models = [...modelNames].map(model => {
       const v = {}; for (const W of WINDOWS) v[W] = ms[W].get(model)?.avg ?? null;
-      const score = method === "total" ? combine(v) : v[method];
+      const score = scoreOf(v);
       const n = ms[31].get(model)?.n ?? 0;
       return { model, stats: ms, v, score, n, dais: new Set(windowRows(store, endDay, 1).filter(r => r.model === model).map(r => r.dai)).size };
     }).filter(m => m.score != null && m.n >= 3 && m.dais > 0).sort((a, b) => b.score - a.score);
@@ -293,7 +320,7 @@
     const dais = [...daiNames].map(dai => {
       const v = {}; for (const W of WINDOWS) v[W] = ds[W].get(dai)?.perDay ?? null;
       const s31 = ds[31].get(dai);
-      const score = method === "total" ? combine(v) : v[method];
+      const score = scoreOf(v);
       return { dai, model: s31?.model, stats: ds, v, score, streak: s31?.streak ?? 0, days: s31?.days ?? 0, plusDays: s31?.plusDays ?? 0 };
     }).filter(d => d.score != null && d.days >= 3).sort((a, b) => b.score - a.score || b.streak - a.streak);
     return { models, dais };
@@ -329,6 +356,38 @@
     });
   }
 
+  // 機種 / 台の「連続マイナス日数」と「最後にプラスだった日」（基準日から）
+  function drought(rowsByDay, endDay) {
+    const ds = [...rowsByDay.keys()].filter(d => d <= endDay).sort().reverse();
+    let streak = 0, lastPlus = null;
+    for (const d of ds) { const a = avg(rowsByDay.get(d)); if (a > 0) { lastPlus = d; break; } streak++; }
+    return { streak, lastPlus };
+  }
+  function renderReb() {
+    const { models, dais } = recommend(state.store, state.day, "rebound");
+    $("#rebNote").textContent = `${fmtDay(state.day)} までのデータ → ${fmtDay(addDays(state.day, 1))} 向け`;
+    const rows31 = windowRows(state.store, state.day, 31);
+    const lp = d => d == null ? "31日以上前" : daysBetween(d, state.day) === 0 ? "基準日" : `${daysBetween(d, state.day)}日前`;
+    const mt = $("#rebModelTbl tbody"); mt.innerHTML = "";
+    models.forEach((m, i) => {
+      const byDay = new Map(); for (const r of rows31) if (r.model === m.model) { if (!byDay.has(r.day)) byDay.set(r.day, []); byDay.get(r.day).push(r.box); }
+      const { streak, lastPlus } = drought(byDay, state.day);
+      const tr = document.createElement("tr"); if (i < TOP_MODELS) tr.className = "rec";
+      tr.innerHTML = `<td class="l" title="${m.model}">${m.model}</td><td class="n">${m.dais}</td><td class="n ${cls(m.v[31])}">${fmt(m.v[31])}</td><td class="n ${cls(m.v[7])}">${fmt(m.v[7])}</td>` +
+        `<td class="n ${cls(m.score)}">${fmt(m.score)}</td><td class="n ${streak >= 3 ? "neg" : ""}">${streak}</td><td class="dim">${lp(lastPlus)}</td>`;
+      mt.append(tr);
+    });
+    const dt = $("#rebDaiTbl tbody"); dt.innerHTML = "";
+    dais.slice(0, 30).forEach((d, i) => {
+      const byDay = new Map(); for (const r of rows31) if (r.dai === d.dai && r.model === d.model) byDay.set(r.day, [r.box]);
+      const { streak, lastPlus } = drought(byDay, state.day);
+      const tr = document.createElement("tr"); if (i < TOP_DAIS) tr.className = "rec";
+      tr.innerHTML = `<td class="n">${d.dai}</td><td class="l" title="${d.model}">${d.model}</td><td class="n ${cls(d.v[31])}">${fmt(d.v[31])}</td><td class="n ${cls(d.v[7])}">${fmt(d.v[7])}</td>` +
+        `<td class="n ${cls(d.score)}">${fmt(d.score)}</td><td class="n ${streak >= 3 ? "neg" : ""}">${streak}</td><td class="dim">${lp(lastPlus)}</td>`;
+      dt.append(tr);
+    });
+  }
+
   function renderNew() {
     const first = new Map();   // 機種 → 初出日
     for (const r of all) if (r.store === state.store) { if (!first.has(r.model) || r.day < first.get(r.model)) first.set(r.model, r.day); }
@@ -352,7 +411,7 @@
   function renderHit() {
     if (!isAdmin) return;
     const store = state.store, sdays = [...(byStoreDay.get(store) || new Map()).keys()].sort();
-    const methods = [[7, "7日"], [14, "14日"], [31, "31日"], ["total", "総合"]];
+    const methods = [[7, "7日"], [14, "14日"], [31, "31日"], ["total", "総合"], ["rebound", "反動"]];
     const acc = {}; for (const [m] of methods) acc[m] = { model: { n: 0, plus: 0, above: 0 }, dai: { n: 0, plus: 0, above: 0 } };
     const base = { n: 0, plus: 0, above: 0 }, daily = [];
     for (let i = 1; i < sdays.length; i++) {
@@ -379,7 +438,7 @@
     const row = (name, target, s, hl) => { const tr = document.createElement("tr"); if (hl) tr.className = "rec";
       tr.innerHTML = `<td class="l">${name}</td><td class="l">${target}</td><td class="n">${s.n}</td><td class="n ${s.n && s.plus / s.n > bp ? "pos" : ""}">${s.n ? pct(s.plus / s.n) : "–"}</td><td class="n ${s.n && s.above / s.n > .5 ? "pos" : ""}">${s.n ? pct(s.above / s.n) : "–"}</td>`; tb.append(tr); };
     row("全台（基準）", "–", base);
-    for (const [m, name] of methods) { row(name, `機種TOP${TOP_MODELS}`, acc[m].model, m === "total"); row(name, `台TOP${TOP_DAIS}`, acc[m].dai, m === "total"); }
+    for (const [m, name] of methods) { row(name, `機種TOP${TOP_MODELS}`, acc[m].model, m === "total" || m === "rebound"); row(name, `台TOP${TOP_DAIS}`, acc[m].dai, m === "total" || m === "rebound"); }
     const dt = $("#hitDayTbl tbody"); dt.innerHTML = "";
     for (const d of daily.slice(-30).reverse()) {
       const tr = document.createElement("tr");
@@ -400,7 +459,7 @@
   for (const d of [...days].reverse()) daySel.append(new Option(fmtDay(d), d));
   daySel.value = state.day; daySel.onchange = () => { state.day = daySel.value; render(); };
 
-  function render() { renderRec(); renderNew(); renderHit(); }
+  function render() { renderRec(); renderReb(); renderNew(); renderHit(); }
   render();
 })();
 </script>
