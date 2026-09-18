@@ -31,7 +31,7 @@
     padding: 20px 28px 12px; border-bottom: 2px solid var(--ink);
   }
   header h1 { margin: 0; font-family: var(--num); font-weight: 700; font-size: 34px; letter-spacing: .02em; line-height: 1; }
-  header h1 small { font-family: var(--body); font-size: 13px; font-weight: 400; color: var(--ink-2); margin-left: 12px; }
+  header h1 small { font-family: var(--body); font-size: 13px; font-weight: 400; color: var(--ink-2); margin-left: 12px; cursor: default; user-select: none; }
   .updated { margin-left: auto; color: var(--ink-2); font-size: 13px; }
   .updated button { margin-left: 10px; background: var(--panel); border: 1.5px solid var(--ink); border-radius: 4px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
   .updated button:disabled { opacity: .5; cursor: default; }
@@ -163,15 +163,9 @@
   document.getElementById("gbtn").onclick = tryLogin;
   gate.addEventListener("keydown", e => { if (e.key === "Enter") tryLogin(); });
 
-  // 隠し導線: タイトル「出玉ボード」を3秒以内に5回タップで傾向ページへ
+  // 隠し導線: タイトル横の説明文をタップで傾向ページへ
   document.addEventListener("DOMContentLoaded", () => {
-    const h1 = document.querySelector("header h1");
-    h1.style.touchAction = "manipulation";   // スマホのダブルタップ拡大を抑止
-    let taps = [];
-    h1.addEventListener("click", () => {
-      const now = Date.now(); taps = taps.filter(t => now - t < 3000); taps.push(now);
-      if (taps.length >= 5) { taps = []; location.href = "trend.html"; }
-    });
+    document.querySelector("header h1 small").addEventListener("click", () => { location.href = "trend.html"; });
   });
 })();
 </script>
