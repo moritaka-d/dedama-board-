@@ -203,6 +203,34 @@
     </div>
   </section>
 
+  <section id="checkSec" hidden>
+    <h2>答え合わせ <span class="badge">admin</span> <span id="checkNote"></span>
+      <label style="font-weight:400;color:var(--ink-2);font-size:13px;margin-left:auto">予想の方式
+        <select id="checkMethod">
+          <option value="total">総合</option><option value="7">7日</option><option value="14">14日</option><option value="31">31日</option><option value="rebound">反動</option>
+        </select>
+      </label>
+    </h2>
+    <div class="kpi" id="checkKpi"></div>
+    <div class="cols">
+      <div class="panel">
+        <h2 style="margin-bottom:6px">台 TOP10 <span>前日時点の予想 → 本日の結果</span></h2>
+        <table id="checkDaiTbl">
+          <thead><tr><th>#</th><th>台</th><th class="l">機種</th><th>予想スコア</th><th>本日箱</th><th>当り</th><th>判定</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="panel">
+        <h2 style="margin-bottom:6px">機種 TOP5 <span>前日時点の予想 → 本日の結果</span></h2>
+        <table id="checkModelTbl">
+          <thead><tr><th>#</th><th class="l">機種</th><th>予想スコア</th><th>本日平均</th><th>プラス台</th><th>判定</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="note">判定: ◎ プラスかつ店平均超え　○ どちらか一方　× 両方外れ　– データなし（撤去など）。基準日を「本日」として、その前日までのデータで出した予想と突き合わせます。</div>
+      </div>
+    </div>
+  </section>
+
   <section id="adminSec" hidden>
     <h2>的中率 <span class="badge">admin</span> <span id="hitNote"></span></h2>
     <div class="cols">
@@ -305,7 +333,7 @@
   if (!all.length) { $("#empty").textContent = "スロットのデータがありません。"; return; }
   $("#empty").hidden = true;
   for (const id of ["recSec", "daiSec", "rebSec", "goodSec", "newSec"]) $("#" + id).hidden = false;
-  if (isAdmin) $("#adminSec").hidden = false;
+  if (isAdmin) { $("#adminSec").hidden = false; $("#checkSec").hidden = false; }
 
   // 店 → 日 → 行、 店 → 台 → 日順の履歴
   const byStoreDay = new Map(), hist = new Map();
@@ -524,6 +552,47 @@
     }
   }
 
+  // 基準日を「本日」として、前日時点の予想と本日の結果を並べる
+  function renderCheck() {
+    if (!isAdmin) return;
+    const store = state.store, today = state.day, prev = addDays(today, -1), method = $("#checkMethod").value;
+    const m = byStoreDay.get(store) || new Map();
+    const rows = m.get(today) || [], hasPrev = m.has(prev);
+    const dt = $("#checkDaiTbl tbody"), mt = $("#checkModelTbl tbody"); dt.innerHTML = ""; mt.innerHTML = "";
+    if (!rows.length || !hasPrev) { $("#checkNote").textContent = `${fmtDay(today)} は前日か本日のデータがなく突き合わせできません`; $("#checkKpi").innerHTML = ""; return; }
+    const storeAvg = avg(rows.map(r => r.box)), storePlus = plusRate(rows.map(r => r.box));
+    const byDai = new Map(rows.map(r => [r.dai, r])), byModel = new Map();
+    for (const r of rows) { if (!byModel.has(r.model)) byModel.set(r.model, []); byModel.get(r.model).push(r); }
+    const { models, dais } = recommend(store, prev, method);
+    const judge = (v, ok) => v == null ? ["–", "dim"] : v > 0 && v > storeAvg ? ["◎", "pos"] : v > 0 || v > storeAvg ? ["○", ""] : ["×", "neg"];
+    let dn = 0, dp = 0, da = 0, dsum = 0;
+    dais.slice(0, TOP_DAIS).forEach((d, i) => {
+      const r = byDai.get(d.dai), same = r && r.model === d.model, v = same ? r.box : null;
+      if (same) { dn++; dsum += v; if (v > 0) dp++; if (v > storeAvg) da++; }
+      const [mark, c] = judge(v);
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td class="dim">${i + 1}</td><td class="n">${d.dai}</td><td class="l" title="${d.model}">${d.model}${r && !same ? ' <span class="dim">→ ' + r.model + "</span>" : ""}</td>` +
+        `<td class="n ${cls(d.score)}">${fmt(d.score)}</td><td class="n ${cls(v)}">${v == null ? "–" : fmt(v, 1)}</td><td class="dim">${same ? r.hit ?? "–" : "–"}</td><td class="n ${c}">${mark}</td>`;
+      dt.append(tr);
+    });
+    let mn = 0, mp = 0, ma = 0;
+    models.slice(0, TOP_MODELS).forEach((md, i) => {
+      const rs = byModel.get(md.model), v = rs ? avg(rs.map(r => r.box)) : null;
+      if (rs) { mn++; if (v > 0) mp++; if (v > storeAvg) ma++; }
+      const [mark, c] = judge(v);
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td class="dim">${i + 1}</td><td class="l" title="${md.model}">${md.model}</td><td class="n ${cls(md.score)}">${fmt(md.score)}</td><td class="n ${cls(v)}">${fmt(v)}</td>` +
+        `<td class="dim">${rs ? rs.filter(r => r.box > 0).length + "/" + rs.length : "–"}</td><td class="n ${c}">${mark}</td>`;
+      mt.append(tr);
+    });
+    $("#checkNote").textContent = `${fmtDay(prev)} までのデータで予想 → ${fmtDay(today)} の結果`;
+    $("#checkKpi").innerHTML =
+      `<div><b style="color:${dn && dp / dn > storePlus ? "var(--plus)" : "var(--minus)"}">${dn ? dp + "/" + dn : "–"}</b>予想台がプラス（店全体 ${pct(storePlus)}）</div>` +
+      `<div><b>${dn ? da + "/" + dn : "–"}</b>予想台が店平均超え</div>` +
+      `<div><b style="color:${dn && dsum / dn > storeAvg ? "var(--plus)" : "var(--minus)"}">${dn ? fmt(dsum / dn) : "–"}</b>予想台の平均箱（店平均 ${fmt(storeAvg)}）</div>` +
+      `<div><b>${mn ? mp + "/" + mn : "–"}</b>予想機種がプラス</div><div><b>${mn ? ma + "/" + mn : "–"}</b>予想機種が店平均超え</div>`;
+  }
+
   // 過去の各日について「前日までのデータで出したおすすめ」を翌日の実績で採点
   function renderHit() {
     if (!isAdmin) return;
@@ -577,7 +646,8 @@
   daySel.value = state.day; daySel.onchange = () => { state.day = daySel.value; render(); };
 
   $("#goodDef").onchange = renderGood;
-  function render() { renderRec(); renderReb(); renderGood(); renderNew(); renderHit(); }
+  $("#checkMethod").onchange = renderCheck;
+  function render() { renderRec(); renderReb(); renderGood(); renderNew(); renderCheck(); renderHit(); }
   render();
 })();
 </script>
