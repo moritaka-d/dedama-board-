@@ -221,7 +221,11 @@
 
   <section class="cols" id="dailySec" hidden>
     <div class="panel">
-      <h2 id="dailyTitle">店全体の推移 <span>1日あたりの平均箱数と、プラスで終わった台の割合</span></h2>
+      <h2 id="dailyTitle" style="flex-wrap:wrap">店全体の推移 <span>1日あたりの平均箱数と、プラスで終わった台の割合</span>
+        <div class="seg" id="dailySeg" style="margin-left:auto;font-size:12px;font-weight:400">
+          <button aria-pressed="true" data-v="avg">平均</button><button aria-pressed="false" data-v="sum">合計</button>
+        </div>
+      </h2>
       <div class="chartbox"><canvas id="daily"></canvas></div>
     </div>
     <div class="panel">
@@ -242,7 +246,7 @@
     // 店舗名 → dedama.me のページ（店舗を増やしたらここにも足す）
   const STORE_URLS = { "東名": "http://dedama.me/kc_toumei/", "野川": "http://dedama.me/kc_nogawa/" };
   const LINK_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>';
-  const state = { store: null, kind: "パチンコ", metric: "box", day: null, model: "", dai: null, sortKey: "avgBox", sortDir: -1 };
+  const state = { store: null, kind: "パチンコ", metric: "box", day: null, model: "", dai: null, sortKey: "avgBox", sortDir: -1, daily: "avg" };
 
   // ---------- CSV ----------
   function parseCSV(text) {
@@ -377,7 +381,7 @@
   }
   daySel.onchange = () => { state.day = daySel.value; render(); };
   modelSel.onchange = () => { state.model = modelSel.value; render(); };
-  seg("#kindSeg", "kind"); seg("#metricSeg", "metric");
+  seg("#kindSeg", "kind"); seg("#metricSeg", "metric"); seg("#dailySeg", "daily");
   document.querySelectorAll("#modelTbl th").forEach(th => th.onclick = () => {
     if (state.sortKey === th.dataset.k) state.sortDir *= -1; else { state.sortKey = th.dataset.k; state.sortDir = th.dataset.k === "model" ? 1 : -1; }
     document.querySelectorAll("#modelTbl th").forEach(x => x.classList.toggle("sorted", x === th)); renderTable();
@@ -528,15 +532,19 @@
     const byDay = new Map();
     for (const r of rows) { if (r.box == null) continue; if (!byDay.has(r.day)) byDay.set(r.day, []); byDay.get(r.day).push(r.box); }
     const ds = [...byDay].sort();
-    $("#dailyTitle").innerHTML = state.model
-      ? `${state.model} の推移 <span>この機種の1日あたりの平均箱数と、プラスで終わった台の割合（台移動しても機種名で集計）</span>`
-      : `店全体の推移 <span>1日あたりの平均箱数と、プラスで終わった台の割合</span>`;
+    const isSum = state.daily === "sum", word = isSum ? "合計箱数" : "平均箱数";
+    // h2 を innerHTML で書き換えると切替ボタンが消えるので、文言部分だけ差し替える
+    const t = $("#dailyTitle");
+    t.childNodes[0].textContent = state.model ? `${state.model} の推移 ` : "店全体の推移 ";
+    t.querySelector("span").textContent = state.model
+      ? `この機種の1日あたりの${word}と、プラスで終わった台の割合（台移動しても機種名で集計）`
+      : `1日あたりの${word}と、プラスで終わった台の割合`;
     const counts = ds.map(([, v]) => v.length);
     const totals = ds.map(([, v]) => v.reduce((a, b) => a + b, 0));
     const data = {
       labels: ds.map(([d]) => d.slice(5).replace("-", "/")),
       datasets: [
-        { type: "line", label: "平均箱数", data: ds.map(([, v], i) => totals[i] / v.length), borderColor: C.plus, backgroundColor: C.plus, pointRadius: 3, tension: .2, yAxisID: "y" },
+        { type: "line", label: word, data: ds.map(([, v], i) => isSum ? totals[i] : totals[i] / v.length), borderColor: C.plus, backgroundColor: C.plus, pointRadius: 3, tension: .2, yAxisID: "y" },
         { type: "line", label: "プラス台の割合(%)", data: ds.map(([, v]) => v.filter(x => x > 0).length / v.length * 100), borderColor: C.minus, backgroundColor: C.minus, pointRadius: 3, tension: .2, yAxisID: "y2", borderDash: [4, 3] },
       ]
     };
@@ -544,8 +552,8 @@
     opts.scales.y = { position: "left", title: { display: true, text: "箱" }, grid: zeroGrid() };
     opts.scales.y2 = { position: "right", min: 0, max: 100, title: { display: true, text: "%" }, grid: { display: false } };
     opts.plugins.tooltip = { callbacks: { afterBody: items => {
-      const i = items[0].dataIndex, t = totals[i];
-      return [`合計 ${t >= 0 ? "+" : ""}${t.toFixed(1)} 箱`, `台数 ${counts[i]}台`];
+      const i = items[0].dataIndex, tt = totals[i], av = tt / counts[i];
+      return [isSum ? `平均 ${av >= 0 ? "+" : ""}${av.toFixed(2)} 箱` : `合計 ${tt >= 0 ? "+" : ""}${tt.toFixed(1)} 箱`, `台数 ${counts[i]}台`];
     } } };
     if (dailyChart) { dailyChart.data = data; dailyChart.options = opts; dailyChart.update(); }
     else dailyChart = new Chart($("#daily"), { data, options: opts, plugins: [zeroBand] });
