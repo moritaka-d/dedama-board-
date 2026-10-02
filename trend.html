@@ -5,7 +5,7 @@
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>傾向</title>
+<title>minoru-AIモード</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
 <script>
@@ -62,14 +62,14 @@
 </head>
 <body>
 <header>
-  <h1>傾向 <small>スロット限定</small></h1>
+  <h1>minoru-AIモード <small>スロット限定</small></h1>
   <a class="back" href="index.html">← ボードに戻る</a>
 </header>
 
 <div class="controls">
   <div class="seg" id="storeSeg"></div>
   <label>基準日 <select id="daySel"></select></label>
-  <span style="color:var(--ink-2);font-size:12px">基準日までのデータで「翌日のおすすめ」を出します。過去の日を選ぶと、その時点で何を推していたかが見られます。</span>
+  <span style="color:var(--ink-2);font-size:12px">基準日までのデータでminoru-AIが「翌日のおすすめ」を出します。過去の日を選ぶと、その時点で何を推していたかが見られます。</span>
 </div>
 
 <main>
@@ -204,7 +204,7 @@
   </section>
 
   <section id="checkSec" hidden>
-    <h2>答え合わせ <span class="badge">admin</span> <span id="checkNote"></span>
+    <h2>答え合わせ <span id="checkNote"></span>
       <label style="font-weight:400;color:var(--ink-2);font-size:13px;margin-left:auto">予想の方式
         <select id="checkMethod">
           <option value="total">総合</option><option value="7">7日</option><option value="14">14日</option><option value="31">31日</option><option value="rebound">反動</option>
@@ -232,7 +232,7 @@
   </section>
 
   <section id="adminSec" hidden>
-    <h2>的中率 <span class="badge">admin</span> <span id="hitNote"></span></h2>
+    <h2>的中率 <span id="hitNote"></span></h2>
     <div class="cols">
       <div class="panel">
         <div class="kpi" id="hitKpi"></div>
@@ -263,7 +263,7 @@
   const KIND = "スロット";
   const WINDOWS = [7, 14, 31], WEIGHTS = { 7: .5, 14: .3, 31: .2 };
   const TOP_MODELS = 5, TOP_DAIS = 10;
-  const isAdmin = sessionStorage.getItem("dedama_admin") === "1";
+  const isAdmin = true;   // 答え合わせ・的中率は全員に公開
   const state = { store: null, day: null };
 
   // ---------- CSV / 日付（index.html と同じ） ----------
