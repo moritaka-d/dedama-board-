@@ -642,7 +642,7 @@
     $("#storeSeg").querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); state.store = b.dataset.v; render();
   });
   const daySel = $("#daySel");
-  for (const d of [...days].reverse()) daySel.append(new Option(fmtDay(d), d));
+  for (const d of days.slice(-31).reverse()) daySel.append(new Option(fmtDay(d), d));   // 基準日は直近31日分
   daySel.value = state.day; daySel.onchange = () => { state.day = daySel.value; render(); };
 
   $("#goodDef").onchange = renderGood;
