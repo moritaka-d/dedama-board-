@@ -196,7 +196,7 @@
   <section id="boardSec" hidden>
     <h2>フロアボード <span id="boardNote"></span></h2>
     <div class="board" id="board"></div>
-    <div class="legend">マイナス <i></i> プラス　<b style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#F5B400;margin:0 4px 0 12px"></b>この日に機種が変わった台　台をクリックすると推移を表示</div>
+    <div class="legend">マイナス <i></i> プラス　<b style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#F5B400;margin:0 4px 0 12px"></b>新台入替え日に機種が変わった台</div>
     <div class="changes" id="changes"></div>
   </section>
 
@@ -281,9 +281,9 @@
     if (!res.ok) throw new Error(res.status);
     return res.text();
   }
-  async function loadMore() {
+  async function loadMore(count = MONTHS_PER_LOAD) {
     const btn = $("#moreBtn"); if (btn) { btn.disabled = true; btn.textContent = "読み込み中…"; }
-    const next = months.slice(loadedMonths, loadedMonths + MONTHS_PER_LOAD);
+    const next = months.slice(loadedMonths, loadedMonths + count);
     for (const m of next) {
       try { raw = raw.concat(parseCSV(await fetchText(`data/${m}.csv`))); } catch (e) { console.warn("読めません", m, e); }
     }
@@ -370,7 +370,7 @@
     // 推移の期間: 直近30日 + 読み込み済みの各月
     const periodSel = $("#periodSel"); periodSel.innerHTML = "";
     periodSel.append(new Option("直近30日", "30"));
-    for (const m of [...new Set(days.map(d => d.slice(0, 7)))].sort().reverse()) periodSel.append(new Option(`${+m.slice(0, 4)}年${+m.slice(5)}月`, m));
+    periodSel.append(new Option("直近1年", "365"));
     if (![...periodSel.options].some(o => o.value === state.period)) state.period = "30";
     periodSel.value = state.period;
     const stores = [...new Set(all.map(r => r.store))];
@@ -384,10 +384,15 @@
     if (more) $("#moreBtn").onclick = loadMore;
   }
   daySel.onchange = () => { state.day = daySel.value; render(); };
-  $("#periodSel").onchange = () => { state.period = $("#periodSel").value; renderTrend(); renderDaily(); };
+  $("#periodSel").onchange = async () => {
+    state.period = $("#periodSel").value;
+    // 直近1年は月ファイル13本分が必要なので、足りなければ読み込んでから描く
+    if (state.period === "365" && loadedMonths < Math.min(13, months.length)) { await loadMore(13 - loadedMonths); return; }
+    renderTrend(); renderDaily();
+  };
   // 推移グラフの対象期間に入る日か
-  const inPeriod = d => state.period === "30" ? d > addDays(days.at(-1), -30) : d.startsWith(state.period);
-  const periodLabel = () => state.period === "30" ? "直近30日" : `${+state.period.slice(0, 4)}年${+state.period.slice(5)}月`;
+  const inPeriod = d => d > addDays(days.at(-1), -Number(state.period));
+  const periodLabel = () => state.period === "30" ? "直近30日" : "直近1年";
   modelSel.onchange = () => { state.model = modelSel.value; render(); };
   seg("#kindSeg", "kind"); seg("#metricSeg", "metric");
   document.querySelectorAll("#modelTbl th").forEach(th => th.onclick = () => {
@@ -527,7 +532,7 @@
       labels: rows.map(r => r.day.slice(5).replace("-", "/")),
       datasets: [
         { type: "bar", label: "箱数", data: rows.map(r => r.box), backgroundColor: rows.map(r => r.box >= 0 ? C.plus : C.minus), yAxisID: "y", order: 2 },
-        { type: "line", label: "大当り回数", data: rows.map(r => r.hit), borderColor: "#1C2130", backgroundColor: "#1C2130", pointRadius: 3, tension: .2, yAxisID: "y2", order: 1 },
+        { type: "line", label: "大当り回数", data: rows.map(r => r.hit), borderColor: "#8A90A0", backgroundColor: "#8A90A0", pointRadius: 3, tension: .2, yAxisID: "y2", order: 1 },
       ]
     };
     const opts = structuredClone(baseOpts);
