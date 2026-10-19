@@ -483,11 +483,10 @@
     $("#goodNote").textContent = `${sdays.length}日中 好調日 ${good.size}日（${sdays.length ? Math.round(good.size / sdays.length * 100) : 0}%）`;
 
     // 曜日・日付
-    const lastDom = d => { const t = new Date(d + "T00:00:00"); return new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate(); };
     const cats = [
       ...["日", "月", "火", "水", "木", "金", "土"].map((n, i) => [n + "曜", d => new Date(d + "T00:00:00").getDay() === i]),
-      ["7のつく日", d => [7, 17, 27].includes(+d.slice(8))], ["ゾロ目", d => [11, 22].includes(+d.slice(8))],
-      ["1日", d => +d.slice(8) === 1], ["月末", d => +d.slice(8) === lastDom(d)],
+      ["12日", d => +d.slice(8) === 12], ["13日", d => +d.slice(8) === 13], ["15日", d => +d.slice(8) === 15], ["22日", d => +d.slice(8) === 22],
+      ["末尾3の日", d => d.slice(8).endsWith("3")], ["末尾9の日", d => d.slice(8).endsWith("9")],
     ];
     const dt = $("#dowTbl tbody"); dt.innerHTML = "";
     const line = (name, ds) => { const g = ds.filter(d => good.has(d)).length, a = avg(ds.map(d => stat.get(d).avg)), p = avg(ds.map(d => stat.get(d).plus));
